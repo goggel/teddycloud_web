@@ -81,6 +81,7 @@ export interface PodcastCapabilities {
     maxEpisodes?: number;
     sourceTypes?: PodcastSourceType[];
     trimSupported?: boolean;
+    feedInspectionSupported?: boolean;
     maxTrimSeconds?: number;
     maxEpisodeTrims?: number;
     maxRequestBytes?: number;

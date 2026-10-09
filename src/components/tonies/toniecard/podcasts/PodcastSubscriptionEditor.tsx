@@ -18,6 +18,7 @@ import { TeddyCloudApi } from "../../../../api";
 import { defaultAPIConfig } from "../../../../config/defaultApiConfig";
 import { PodcastPreview, PodcastSearchResult } from "../../../../types/podcastTypes";
 import { usePodcastSubscription } from "./usePodcastSubscription";
+import { usePodcastFeedFilter } from "./usePodcastFeedFilter";
 import {
     configForCapabilities,
     effectiveTrim,
@@ -39,11 +40,31 @@ export const PodcastSubscriptionEditor = ({
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<PodcastSearchResult[]>([]);
     const [searchError, setSearchError] = useState("");
+    const [videoRemoved, setVideoRemoved] = useState(false);
     const [preview, setPreview] = useState<PodcastPreview>();
     const [previewing, setPreviewing] = useState(false);
     const [previewError, setPreviewError] = useState("");
     const { draft, setDraft, subscription } = state;
     const provider = draft.sourceType === "ard_audiothek" ? "ard_audiothek" : "apple";
+    const locked = disabled || state.busy || state.loading;
+    const filtered = usePodcastFeedFilter(
+        api,
+        results,
+        provider === "apple" && !locked ? draft.feedUrl : "",
+        Boolean(state.capabilities.feedInspectionSupported),
+    );
+    useEffect(() => {
+        if (!filtered.selectedVideo || locked) return;
+        const url = draft.feedUrl;
+        setDraft((current) =>
+            current.sourceType === "rss" && current.feedUrl === url
+                ? { ...current, feedUrl: "" }
+                : current,
+        );
+        setQuery("");
+        setPreviewing(false);
+        setVideoRemoved(true);
+    }, [filtered.selectedVideo, draft.feedUrl, locked, setDraft]);
     const selectionToken = sourceToken(draft) + ":" + draft.episodeCount + ":" + draft.order;
     const [previewToken, setPreviewToken] = useState("");
     const overrides = draft.episodeTrims;
@@ -117,7 +138,6 @@ export const PodcastSubscriptionEditor = ({
             });
         return () => controller.abort();
     }, [previewing, selectionToken]);
-    const locked = disabled || state.busy || state.loading;
     return (
         <Space orientation="vertical" style={{ width: "100%" }}>
             <Alert type="info" title={t("podcasts.explanation")} />
@@ -133,6 +153,7 @@ export const PodcastSubscriptionEditor = ({
                             : []),
                     ]}
                     onChange={(sourceType) => {
+                        setVideoRemoved(false);
                         setDraft({ ...draft, sourceType });
                         setQuery("");
                         setResults([]);
@@ -147,11 +168,12 @@ export const PodcastSubscriptionEditor = ({
                     onSearch={setQuery}
                     onChange={setQuery}
                     style={{ width: "100%" }}
-                    options={results.map((item) => ({
+                    options={filtered.results.map((item) => ({
                         value: item.sourceType === "ard_audiothek" ? item.ardShowUrl : item.feedUrl,
                         label: `${item.title} — ${item.author}`,
                     }))}
                     onSelect={(url) => {
+                        setVideoRemoved(false);
                         const next =
                             provider === "ard_audiothek"
                                 ? { ...draft, ardShowUrl: url }
@@ -173,6 +195,7 @@ export const PodcastSubscriptionEditor = ({
                 />
             </Form.Item>
             {searchError && <Alert type="warning" title={searchError} />}
+            {videoRemoved && <Alert type="warning" title={t("podcasts.videoRemoved")} />}
             <Form.Item
                 label={t(provider === "ard_audiothek" ? "podcasts.ardShowUrl" : "podcasts.feedUrl")}
             >
@@ -183,13 +206,14 @@ export const PodcastSubscriptionEditor = ({
                     value={provider === "ard_audiothek" ? draft.ardShowUrl : draft.feedUrl}
                     disabled={locked}
                     maxLength={2048}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                        setVideoRemoved(false);
                         setDraft(
                             provider === "ard_audiothek"
                                 ? { ...draft, ardShowUrl: e.target.value }
                                 : { ...draft, feedUrl: e.target.value },
-                        )
-                    }
+                        );
+                    }}
                     placeholder={
                         provider === "ard_audiothek"
                             ? "https://www.ardsounds.de/sendung/…"

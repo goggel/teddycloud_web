@@ -2600,6 +2600,7 @@
         "search": "Podcasts suchen",
         "searchPlaceholder": "Name des Podcasts",
         "searchFailed": "Die Suche ist nicht verfügbar. Gib stattdessen die RSS-Adresse ein.",
+        "videoRemoved": "Dieser Feed enthält nur Videos. Die Auswahl wurde zurückgesetzt. Bitte wähle einen Audio-Podcast.",
         "feedUrl": "RSS-Feed-Adresse",
         "episodeCount": "Neueste Folgen",
         "order": "Wiedergabereihenfolge",

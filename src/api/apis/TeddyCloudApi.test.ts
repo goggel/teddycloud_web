@@ -103,6 +103,21 @@ describe("TeddyCloudApi.apiPostTeddyCloudFormDataRaw", () => {
 });
 
 describe("podcast API", () => {
+    it("inspects feed metadata independently of search and forwards cancellation", async () => {
+        const fetchApi = vi
+            .fn()
+            .mockResolvedValue(new Response('{"videoOnly":true}', { status: 200 }));
+        const api = new TeddyCloudApi(new Configuration({ basePath: "", fetchApi }));
+        const signal = new AbortController().signal;
+        expect(await api.podcastFeedInfo("https://example.org/video.rss", signal)).toEqual({
+            videoOnly: true,
+        });
+        const [url, init] = fetchApi.mock.calls[0];
+        expect(url).toBe("/api/podcasts/feed-info");
+        expect(init.method).toBe("POST");
+        expect(JSON.parse(init.body)).toEqual({ feedUrl: "https://example.org/video.rss" });
+        expect(init.signal).toBe(signal);
+    });
     it("encodes query and overlay independently and carries abort signals", async () => {
         const fetchApi = vi
             .fn()

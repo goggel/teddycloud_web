@@ -105,6 +105,12 @@ export class TeddyCloudApi extends runtime.BaseAPI {
     podcastPreview(config: PodcastConfig, signal?: AbortSignal) {
         return this.podcastRequest<PodcastPreview>("preview", { body: config, signal });
     }
+    podcastFeedInfo(feedUrl: string, signal?: AbortSignal) {
+        return this.podcastRequest<{ videoOnly: boolean }>("feed-info", {
+            body: { feedUrl },
+            signal,
+        });
+    }
     podcastSave(
         ruid: string,
         overlay: string,

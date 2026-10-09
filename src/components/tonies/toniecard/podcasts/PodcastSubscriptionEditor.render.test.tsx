@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     save: vi.fn(),
     preview: vi.fn(),
     search: vi.fn(),
+    feedInfo: vi.fn(),
     t: (key: string, args?: Record<string, unknown>) => key + (args ? JSON.stringify(args) : ""),
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: mocks.t }) }));
@@ -21,6 +22,7 @@ vi.mock("../../../../api", () => ({
         podcastSave = mocks.save;
         podcastPreview = mocks.preview;
         podcastSearch = mocks.search;
+        podcastFeedInfo = mocks.feedInfo;
     },
 }));
 vi.mock("../../../../config/defaultApiConfig", () => ({ defaultAPIConfig: () => ({}) }));
@@ -106,6 +108,7 @@ beforeEach(() => {
         supported: true,
         sourceTypes: ["rss", "ard_audiothek"],
         trimSupported: true,
+        feedInspectionSupported: true,
     });
     mocks.subscriptions.mockResolvedValue({ subscriptions: [base] });
     mocks.save.mockImplementation(async (_r, _o, config) => ({
@@ -126,6 +129,7 @@ beforeEach(() => {
         ],
     });
     mocks.search.mockResolvedValue({ results: [] });
+    mocks.feedInfo.mockResolvedValue({ videoOnly: false });
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -136,6 +140,96 @@ afterEach(async () => {
     vi.useRealTimers();
 });
 describe("rendered podcast editor", () => {
+    it("shows search results immediately and clears a selected video feed when its background check completes", async () => {
+        const videoUrl = "https://example.org/maus-video.rss";
+        const pending: ((result: { videoOnly: boolean }) => void)[] = [];
+        mocks.feedInfo.mockImplementation((feedUrl: string) =>
+            feedUrl === videoUrl
+                ? new Promise((resolve) => pending.push(resolve))
+                : Promise.resolve({ videoOnly: false }),
+        );
+        mocks.search.mockResolvedValue({
+            results: [
+                { providerId: 1, title: "Video Maus", author: "WDR", feedUrl: videoUrl },
+                { providerId: 2, title: "Audio Maus", author: "WDR", feedUrl: url },
+            ],
+        });
+        await render();
+        await input("podcasts.search", "Maus");
+        await act(async () => vi.advanceTimersByTimeAsync(400));
+        const search = host.querySelector('[aria-label="podcasts.search"]')!;
+        await act(async () => search.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+        const video = Array.from(document.querySelectorAll(".ant-select-item-option")).find(
+            (element) => element.textContent === "Video Maus — WDR",
+        )!;
+        expect(video).toBeTruthy();
+        expect(pending).toHaveLength(1);
+        await click(video);
+        expect(current.draft.feedUrl).toBe(videoUrl);
+        await click(button("podcasts.preview"));
+        expect(host.textContent).toContain("Preview show");
+        await input("podcasts.trimStart", "9");
+        await act(async () => vi.advanceTimersByTimeAsync(400));
+        expect(pending).toHaveLength(2);
+        await act(async () => pending.forEach((resolve) => resolve({ videoOnly: true })));
+        expect(current.draft.feedUrl).toBe("");
+        expect(current.draft.trimStartSeconds).toBe(9);
+        expect(current.valid).toBe(false);
+        expect(host.textContent).toContain("podcasts.videoRemoved");
+        expect(host.textContent).not.toContain("Preview show");
+        expect(mocks.save).not.toHaveBeenCalled();
+    });
+    it("does not let a stale video check clear a newer audio selection", async () => {
+        const videoUrl = "https://example.org/video.rss";
+        let resolveVideo!: (result: { videoOnly: boolean }) => void;
+        mocks.feedInfo.mockImplementation((feedUrl: string) =>
+            feedUrl === videoUrl
+                ? new Promise((resolve) => {
+                      resolveVideo = resolve;
+                  })
+                : Promise.resolve({ videoOnly: false }),
+        );
+        await render();
+        await input("podcasts.feedUrl", videoUrl);
+        await act(async () => vi.advanceTimersByTimeAsync(400));
+        const signal = mocks.feedInfo.mock.calls.find(([feedUrl]) => feedUrl === videoUrl)![1];
+        await input("podcasts.feedUrl", url);
+        await act(async () => resolveVideo({ videoOnly: true }));
+        expect(signal.aborted).toBe(true);
+        expect(current.draft.feedUrl).toBe(url);
+        expect(host.textContent).not.toContain("podcasts.videoRemoved");
+    });
+    it("filters video results asynchronously while retaining audio results and failed checks", async () => {
+        let resolveVideo!: (result: { videoOnly: boolean }) => void;
+        mocks.feedInfo.mockImplementation((feedUrl: string) => {
+            if (feedUrl.endsWith("video"))
+                return new Promise((resolve) => {
+                    resolveVideo = resolve;
+                });
+            if (feedUrl.endsWith("unavailable")) return Promise.reject(new Error("timeout"));
+            return Promise.resolve({ videoOnly: false });
+        });
+        mocks.search.mockResolvedValue({
+            results: ["video", "audio", "unavailable"].map((kind, index) => ({
+                providerId: index,
+                title: kind,
+                author: "WDR",
+                feedUrl: "https://example.org/" + kind,
+            })),
+        });
+        await render();
+        await input("podcasts.search", "Maus");
+        await act(async () => vi.advanceTimersByTimeAsync(400));
+        const search = host.querySelector('[aria-label="podcasts.search"]')!;
+        await act(async () => search.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+        expect(document.querySelectorAll(".ant-select-item-option")).toHaveLength(3);
+        await act(async () => resolveVideo({ videoOnly: true }));
+        const labels = Array.from(document.querySelectorAll(".ant-select-item-option")).map(
+            (element) => element.textContent,
+        );
+        expect(labels).toEqual(["audio — WDR", "unavailable — WDR"]);
+        expect(current.draft.feedUrl).toBe(url);
+    });
     it("edits defaults locally, keeps explicit zero overrides, removes overrides, saves and cancels", async () => {
         await render();
         await input("podcasts.trimStart", "3");

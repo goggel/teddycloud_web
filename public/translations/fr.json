@@ -2601,6 +2601,7 @@
         "search": "Search podcasts",
         "searchPlaceholder": "Podcast name",
         "searchFailed": "Search is unavailable. Enter the RSS feed URL instead.",
+        "videoRemoved": "This feed contains only video episodes. The selection has been cleared. Please choose an audio podcast.",
         "feedUrl": "RSS feed URL",
         "episodeCount": "Latest episodes",
         "order": "Playback order",
