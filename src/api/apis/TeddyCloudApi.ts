@@ -96,9 +96,9 @@ export class TeddyCloudApi extends runtime.BaseAPI {
             signal,
         });
     }
-    podcastSearch(q: string, signal?: AbortSignal) {
+    podcastSearch(q: string, signal?: AbortSignal, provider: "apple" | "ard_audiothek" = "apple") {
         return this.podcastRequest<{ results: PodcastSearchResult[] }>("search", {
-            query: { q, country: "DE" },
+            query: { q, country: "DE", provider },
             signal,
         });
     }

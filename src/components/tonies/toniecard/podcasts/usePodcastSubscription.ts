@@ -1,22 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 import { TeddyCloudApi } from "../../../../api";
 import { defaultAPIConfig } from "../../../../config/defaultApiConfig";
-import { PodcastConfig, PodcastSubscription } from "../../../../types/podcastTypes";
-import { defaultPodcastConfig, podcastConfig, validPodcastConfig } from "./podcastValidation";
+import {
+    PodcastCapabilities,
+    PodcastConfig,
+    PodcastDraft,
+    PodcastSubscription,
+} from "../../../../types/podcastTypes";
+import {
+    configForCapabilities,
+    defaultPodcastConfig,
+    podcastConfig,
+    rssSourceKey,
+    sourceToken,
+    validPodcastConfig,
+} from "./podcastValidation";
 const api = new TeddyCloudApi(defaultAPIConfig());
 
 export const usePodcastSubscription = (open: boolean, ruid: string, overlay: string) => {
+    const [capabilities, setCapabilities] = useState<PodcastCapabilities>({ supported: false });
     const [supported, setSupported] = useState(false);
     const [loading, setLoading] = useState(false);
     const [mode, setMode] = useState<"audio" | "podcast">("audio");
-    const [draft, setDraft] = useState<PodcastConfig>(defaultPodcastConfig);
+    const [draft, setDraft] = useState<PodcastDraft>(defaultPodcastConfig);
     const [subscription, setSubscription] = useState<PodcastSubscription>();
+    const [resolvedSource, setResolvedSource] = useState<{ token: string; key: string }>({
+        token: "",
+        key: "",
+    });
     const [error, setError] = useState("");
     const [busy, setBusy] = useState(false);
     const active = useRef(false);
     const epoch = useRef(0);
     const editingBase = useRef<PodcastSubscription>(undefined);
-    const baseline = useRef<PodcastConfig>(defaultPodcastConfig());
+    const baseline = useRef<PodcastDraft>(defaultPodcastConfig());
     useEffect(() => {
         if (!open) return;
         active.current = true;
@@ -29,11 +46,13 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
         setSubscription(undefined);
         setError("");
         setSupported(false);
+        setCapabilities({ supported: false });
         const poll = async (initial: boolean) => {
             try {
                 if (initial) {
                     const capabilities = await api.podcastCapabilities(controller.signal);
                     if (controller.signal.aborted) return;
+                    setCapabilities(capabilities);
                     setSupported(capabilities.supported);
                     if (!capabilities.supported) {
                         setError(capabilities.message || "");
@@ -48,6 +67,10 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
                     editingBase.current = current;
                     baseline.current = current ? podcastConfig(current) : defaultPodcastConfig();
                     setDraft(baseline.current);
+                    setResolvedSource({
+                        token: sourceToken(baseline.current),
+                        key: current?.sourceKey ?? "",
+                    });
                     setMode(current ? "podcast" : "audio");
                 }
                 timer = setTimeout(() => void poll(false), 2000);
@@ -68,6 +91,15 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
             clearTimeout(timer);
         };
     }, [open, ruid, overlay]);
+    const sourceKey =
+        draft.sourceType === "rss"
+            ? rssSourceKey(draft.feedUrl)
+            : resolvedSource.token === sourceToken(draft)
+              ? resolvedSource.key
+              : "";
+    const sourceMismatch =
+        draft.episodeTrims.length > 0 && (!sourceKey || draft.episodeTrimSourceKey !== sourceKey);
+    const valid = validPodcastConfig(draft) && !sourceMismatch;
     const dirty =
         supported &&
         !loading &&
@@ -92,8 +124,13 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
         run(async () => {
             const session = epoch.current;
             if (mode === "podcast") {
-                if (!validPodcastConfig(draft)) throw new Error("Invalid podcast settings");
-                const result = await api.podcastSave(ruid, overlay, draft, editingBase.current);
+                if (!valid) throw new Error("Invalid podcast settings");
+                const result = await api.podcastSave(
+                    ruid,
+                    overlay,
+                    configForCapabilities(draft, capabilities),
+                    editingBase.current,
+                );
                 if (!active.current || epoch.current !== session) return;
                 editingBase.current = result.subscription;
                 setSubscription(result.subscription);
@@ -119,6 +156,12 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
             }
         });
     return {
+        capabilities,
+        resolvedSource,
+        setResolvedSource,
+        sourceKey,
+        sourceMismatch,
+        valid,
         supported,
         loading,
         mode,

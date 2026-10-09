@@ -2630,6 +2630,26 @@
             "ready": "Vorbereitet",
             "error": "Fehler",
             "paused": "Pausiert"
-        }
+        },
+        "sourceType": "Podcast-Quelle",
+        "rss": "Podcasts (RSS)",
+        "ard": "ARD Audiothek / ARD Sounds",
+        "ardShowUrl": "ARD-Sendungslink",
+        "trimHelp": "Sekunden, die am Anfang und Ende jeder Folge entfernt werden. Neue Folgen übernehmen diese Vorgaben. Das Kürzen am Ende verlängert die Vorbereitung.",
+        "trimStart": "Am Anfang entfernen (Sekunden)",
+        "trimEnd": "Am Ende entfernen (Sekunden)",
+        "sourceMismatch": "Die Quelle wurde geändert. Prüfe mit der Vorschau, ob es dieselbe Sendung ist, oder lösche die gespeicherten Folgen-Ausnahmen vor dem Speichern.",
+        "clearOverrides": "Folgen-Ausnahmen löschen",
+        "storedOverrides": "Gespeicherte Folgen-Ausnahmen",
+        "removeOverride": "Ausnahme entfernen",
+        "effectiveCuts": "Gewünschte Kürzung: {{start}} s Anfang / {{end}} s Ende",
+        "appliedCuts": "Vorbereitete Kürzung: {{start}} s Anfang / {{end}} s Ende",
+        "estimatedDuration": "Geschätzt {{seconds}} s",
+        "shortEpisode": "Die geschätzte Dauer ist für diese Kürzung zu kurz. Die Vorbereitung prüft die tatsächliche Audiodauer.",
+        "override": "Ausnahme für diese Folge",
+        "overrideEpisode": "Kürzung für {{title}} anpassen",
+        "episodeTrimStart": "Kürzung am Anfang für {{title}}",
+        "episodeTrimEnd": "Kürzung am Ende für {{title}}",
+        "overrideCapacity": "Bis zu 50 Folgen-Ausnahmen können gespeichert werden. Entferne nicht mehr benötigte Ausnahmen, um weitere hinzuzufügen."
     }
 }

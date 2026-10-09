@@ -1,5 +1,7 @@
 # Changelog
 
+- Add ARD Audiothek / ARD Sounds show sources and measured start/end cuts with per-episode overrides.
+
 - Add prepared podcast subscriptions to the Tonie editor, with episode selection and automatic refresh (requires a matching backend).
 
 ## 0.7.1

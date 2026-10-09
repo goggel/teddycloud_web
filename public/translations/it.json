@@ -2630,6 +2630,26 @@
             "ready": "Ready",
             "error": "Error",
             "paused": "Paused"
-        }
+        },
+        "sourceType": "Podcast source",
+        "rss": "Podcasts (RSS)",
+        "ard": "ARD Audiothek / ARD Sounds",
+        "ardShowUrl": "ARD show link",
+        "trimHelp": "Seconds removed from each episode’s beginning and end. New episodes inherit these defaults. End cuts take longer to prepare.",
+        "trimStart": "Remove from start (seconds)",
+        "trimEnd": "Remove from end (seconds)",
+        "sourceMismatch": "The source changed. Preview to check whether it is the same show, or explicitly clear the stored episode overrides before saving.",
+        "clearOverrides": "Clear episode overrides",
+        "storedOverrides": "Saved episode overrides",
+        "removeOverride": "Remove override",
+        "effectiveCuts": "Requested cuts: {{start}} s start / {{end}} s end",
+        "appliedCuts": "Prepared cuts: {{start}} s start / {{end}} s end",
+        "estimatedDuration": "Estimated {{seconds}} s",
+        "shortEpisode": "Estimated duration is too short for these cuts. Preparation checks the actual audio.",
+        "override": "Override for this episode",
+        "overrideEpisode": "Override cuts for {{title}}",
+        "episodeTrimStart": "Start cut for {{title}}",
+        "episodeTrimEnd": "End cut for {{title}}",
+        "overrideCapacity": "Up to 50 episode overrides can be saved. Remove unused overrides to add another."
     }
 }

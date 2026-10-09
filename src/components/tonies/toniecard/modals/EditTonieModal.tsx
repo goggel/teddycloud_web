@@ -38,6 +38,7 @@ type ValidateStatus = "" | "success" | "warning" | "error" | "validating" | unde
 interface EditTonieModalProps {
     podcast?: {
         supported: boolean;
+        valid: boolean;
         mode: "audio" | "podcast";
         setMode: (mode: "audio" | "podcast") => void;
         editor: React.ReactNode;
@@ -257,7 +258,12 @@ export const EditTonieModal: React.FC<EditTonieModalProps> = ({
                 <Button
                     type="primary"
                     onClick={onSave}
-                    disabled={!hasPendingChanges || podcast?.loading || podcast?.busy}
+                    disabled={
+                        !hasPendingChanges ||
+                        podcast?.loading ||
+                        podcast?.busy ||
+                        (podcast?.supported && podcast.mode === "podcast" && !podcast.valid)
+                    }
                 >
                     <SaveFilled key="saveClick" /> {t("tonies.editModal.save")}
                 </Button>

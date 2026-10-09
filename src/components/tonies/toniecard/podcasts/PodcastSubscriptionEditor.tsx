@@ -18,7 +18,12 @@ import { TeddyCloudApi } from "../../../../api";
 import { defaultAPIConfig } from "../../../../config/defaultApiConfig";
 import { PodcastPreview, PodcastSearchResult } from "../../../../types/podcastTypes";
 import { usePodcastSubscription } from "./usePodcastSubscription";
-import { validPodcastConfig } from "./podcastValidation";
+import {
+    configForCapabilities,
+    effectiveTrim,
+    sourceToken,
+    validPodcastConfig,
+} from "./podcastValidation";
 const api = new TeddyCloudApi(defaultAPIConfig());
 export type PodcastEditorState = ReturnType<typeof usePodcastSubscription>;
 export const PodcastSubscriptionEditor = ({
@@ -38,6 +43,26 @@ export const PodcastSubscriptionEditor = ({
     const [previewing, setPreviewing] = useState(false);
     const [previewError, setPreviewError] = useState("");
     const { draft, setDraft, subscription } = state;
+    const provider = draft.sourceType === "ard_audiothek" ? "ard_audiothek" : "apple";
+    const selectionToken = sourceToken(draft) + ":" + draft.episodeCount + ":" + draft.order;
+    const [previewToken, setPreviewToken] = useState("");
+    const overrides = draft.episodeTrims;
+    const removeOverride = (identity: string) =>
+        setDraft({
+            ...draft,
+            episodeTrims: overrides.filter((item) => item.identity !== identity),
+        });
+    const setOverride = (identity: string, start: number, end: number) =>
+        setDraft({
+            ...draft,
+            episodeTrimSourceKey: overrides.length
+                ? draft.episodeTrimSourceKey
+                : state.sourceKey || preview?.sourceKey || "",
+            episodeTrims: [
+                ...overrides.filter((item) => item.identity !== identity),
+                { identity, trimStartSeconds: start, trimEndSeconds: end },
+            ],
+        });
     useEffect(() => {
         setResults([]);
         setSearchError("");
@@ -45,7 +70,7 @@ export const PodcastSubscriptionEditor = ({
         const controller = new AbortController();
         const timer = setTimeout(() => {
             void api
-                .podcastSearch(query.trim(), controller.signal)
+                .podcastSearch(query.trim(), controller.signal, provider)
                 .then((response) => {
                     if (!controller.signal.aborted) setResults(response.results);
                 })
@@ -57,18 +82,32 @@ export const PodcastSubscriptionEditor = ({
             clearTimeout(timer);
             controller.abort();
         };
-    }, [query, t]);
+    }, [query, provider, t]);
     useEffect(() => {
         setPreview(undefined);
         setPreviewError("");
-    }, [draft.feedUrl, draft.episodeCount, draft.order]);
+    }, [selectionToken]);
     useEffect(() => {
         if (!previewing) return;
+        const token = selectionToken;
         const controller = new AbortController();
         void api
-            .podcastPreview(draft, controller.signal)
+            .podcastPreview(
+                configForCapabilities(
+                    { ...draft, episodeTrims: [], episodeTrimSourceKey: "" },
+                    state.capabilities,
+                ),
+                controller.signal,
+            )
             .then((result) => {
-                if (!controller.signal.aborted) setPreview(result);
+                if (!controller.signal.aborted) {
+                    setPreview(result);
+                    setPreviewToken(token);
+                    state.setResolvedSource({
+                        token: sourceToken(draft),
+                        key: result.sourceKey || "",
+                    });
+                }
             })
             .catch((cause) => {
                 if (!controller.signal.aborted) setPreviewError(String(cause));
@@ -77,24 +116,56 @@ export const PodcastSubscriptionEditor = ({
                 if (!controller.signal.aborted) setPreviewing(false);
             });
         return () => controller.abort();
-    }, [previewing, draft]);
+    }, [previewing, selectionToken]);
     const locked = disabled || state.busy || state.loading;
     return (
         <Space orientation="vertical" style={{ width: "100%" }}>
             <Alert type="info" title={t("podcasts.explanation")} />
+            <Form.Item label={t("podcasts.sourceType")}>
+                <Select
+                    aria-label={t("podcasts.sourceType")}
+                    value={draft.sourceType}
+                    disabled={locked}
+                    options={[
+                        { value: "rss", label: t("podcasts.rss") },
+                        ...(state.capabilities.sourceTypes?.includes("ard_audiothek")
+                            ? [{ value: "ard_audiothek", label: t("podcasts.ard") }]
+                            : []),
+                    ]}
+                    onChange={(sourceType) => {
+                        setDraft({ ...draft, sourceType });
+                        setQuery("");
+                        setResults([]);
+                    }}
+                />
+            </Form.Item>
             <Form.Item label={t("podcasts.search")}>
                 <AutoComplete
+                    aria-label={t("podcasts.search")}
                     value={query}
                     disabled={locked}
                     onSearch={setQuery}
                     onChange={setQuery}
                     style={{ width: "100%" }}
                     options={results.map((item) => ({
-                        value: item.feedUrl,
+                        value: item.sourceType === "ard_audiothek" ? item.ardShowUrl : item.feedUrl,
                         label: `${item.title} — ${item.author}`,
                     }))}
-                    onSelect={(feedUrl) => {
-                        setDraft({ ...draft, feedUrl });
+                    onSelect={(url) => {
+                        const next =
+                            provider === "ard_audiothek"
+                                ? { ...draft, ardShowUrl: url }
+                                : { ...draft, feedUrl: url };
+                        setDraft(next);
+                        const item = results.find(
+                            (item) =>
+                                item.sourceType === "ard_audiothek" && item.ardShowUrl === url,
+                        );
+                        if (item?.sourceType === "ard_audiothek" && item.sourceKey)
+                            state.setResolvedSource({
+                                token: sourceToken(next),
+                                key: item.sourceKey,
+                            });
                         setQuery("");
                         setResults([]);
                     }}
@@ -102,15 +173,108 @@ export const PodcastSubscriptionEditor = ({
                 />
             </Form.Item>
             {searchError && <Alert type="warning" title={searchError} />}
-            <Form.Item label={t("podcasts.feedUrl")}>
+            <Form.Item
+                label={t(provider === "ard_audiothek" ? "podcasts.ardShowUrl" : "podcasts.feedUrl")}
+            >
                 <Input
-                    value={draft.feedUrl}
+                    aria-label={t(
+                        provider === "ard_audiothek" ? "podcasts.ardShowUrl" : "podcasts.feedUrl",
+                    )}
+                    value={provider === "ard_audiothek" ? draft.ardShowUrl : draft.feedUrl}
                     disabled={locked}
                     maxLength={2048}
-                    onChange={(e) => setDraft({ ...draft, feedUrl: e.target.value })}
-                    placeholder="https://example.org/podcast.rss"
+                    onChange={(e) =>
+                        setDraft(
+                            provider === "ard_audiothek"
+                                ? { ...draft, ardShowUrl: e.target.value }
+                                : { ...draft, feedUrl: e.target.value },
+                        )
+                    }
+                    placeholder={
+                        provider === "ard_audiothek"
+                            ? "https://www.ardsounds.de/sendung/…"
+                            : "https://example.org/podcast.rss"
+                    }
                 />
             </Form.Item>
+            {state.capabilities.trimSupported && (
+                <>
+                    <Typography.Text>{t("podcasts.trimHelp")}</Typography.Text>
+                    <Space wrap>
+                        <Form.Item label={t("podcasts.trimStart")}>
+                            <InputNumber
+                                aria-label={t("podcasts.trimStart")}
+                                min={0}
+                                max={21600}
+                                precision={0}
+                                value={draft.trimStartSeconds}
+                                disabled={locked}
+                                onChange={(value) =>
+                                    setDraft({ ...draft, trimStartSeconds: value ?? -1 })
+                                }
+                            />
+                        </Form.Item>
+                        <Form.Item label={t("podcasts.trimEnd")}>
+                            <InputNumber
+                                aria-label={t("podcasts.trimEnd")}
+                                min={0}
+                                max={21600}
+                                precision={0}
+                                value={draft.trimEndSeconds}
+                                disabled={locked}
+                                onChange={(value) =>
+                                    setDraft({ ...draft, trimEndSeconds: value ?? -1 })
+                                }
+                            />
+                        </Form.Item>
+                    </Space>
+                    {state.sourceMismatch && (
+                        <Alert
+                            type="warning"
+                            title={t("podcasts.sourceMismatch")}
+                            action={
+                                <Button
+                                    disabled={locked}
+                                    onClick={() =>
+                                        setDraft({
+                                            ...draft,
+                                            episodeTrims: [],
+                                            episodeTrimSourceKey: "",
+                                        })
+                                    }
+                                >
+                                    {t("podcasts.clearOverrides")}
+                                </Button>
+                            }
+                        />
+                    )}
+                    {overrides.length >= 50 && (
+                        <Alert type="info" title={t("podcasts.overrideCapacity")} />
+                    )}
+                    {overrides.length > 0 && (
+                        <List
+                            header={t("podcasts.storedOverrides")}
+                            dataSource={overrides}
+                            renderItem={(item) => (
+                                <List.Item
+                                    actions={[
+                                        <Button
+                                            key="remove"
+                                            disabled={locked}
+                                            onClick={() => removeOverride(item.identity)}
+                                        >
+                                            {t("podcasts.removeOverride")}
+                                        </Button>,
+                                    ]}
+                                >
+                                    {item.identity}: {item.trimStartSeconds} / {item.trimEndSeconds}{" "}
+                                    s
+                                </List.Item>
+                            )}
+                        />
+                    )}
+                </>
+            )}
             <Space wrap>
                 <Form.Item label={t("podcasts.episodeCount")}>
                     <InputNumber
@@ -165,7 +329,14 @@ export const PodcastSubscriptionEditor = ({
             {draft.refreshOnPlacement && <Alert type="info" title={t("podcasts.placementHelp")} />}
             <Space wrap>
                 <Button
-                    disabled={locked || !validPodcastConfig(draft)}
+                    disabled={
+                        locked ||
+                        !validPodcastConfig({
+                            ...draft,
+                            episodeTrims: [],
+                            episodeTrimSourceKey: "",
+                        })
+                    }
                     loading={previewing}
                     onClick={() => setPreviewing(true)}
                 >
@@ -211,11 +382,115 @@ export const PodcastSubscriptionEditor = ({
                     <List
                         size="small"
                         dataSource={preview.episodes}
-                        renderItem={(episode, i) => (
-                            <List.Item>
-                                {i + 1}. {episode.title}
-                            </List.Item>
-                        )}
+                        renderItem={(episode, i) => {
+                            const cuts = effectiveTrim(draft, episode),
+                                overridden = overrides.some(
+                                    (item) => item.identity === episode.identity,
+                                );
+                            const estimate =
+                                episode.durationSeconds === undefined
+                                    ? undefined
+                                    : episode.durationSeconds -
+                                      cuts.trimStartSeconds -
+                                      cuts.trimEndSeconds;
+                            return (
+                                <List.Item>
+                                    <Space orientation="vertical" style={{ width: "100%" }}>
+                                        <span>
+                                            {i + 1}. {episode.title}
+                                        </span>
+                                        {state.capabilities.trimSupported && (
+                                            <>
+                                                <span>
+                                                    {t("podcasts.effectiveCuts", {
+                                                        start: cuts.trimStartSeconds,
+                                                        end: cuts.trimEndSeconds,
+                                                    })}
+                                                    {estimate !== undefined &&
+                                                        ` · ${t("podcasts.estimatedDuration", { seconds: Math.max(0, estimate) })}`}
+                                                </span>
+                                                {estimate !== undefined && estimate <= 0 && (
+                                                    <Alert
+                                                        type="warning"
+                                                        title={t("podcasts.shortEpisode")}
+                                                    />
+                                                )}
+                                                <Space>
+                                                    <Switch
+                                                        aria-label={t("podcasts.overrideEpisode", {
+                                                            title: episode.title,
+                                                        })}
+                                                        checked={overridden}
+                                                        disabled={
+                                                            locked ||
+                                                            (!overridden &&
+                                                                (overrides.length >= 50 ||
+                                                                    state.sourceMismatch ||
+                                                                    previewToken !==
+                                                                        selectionToken))
+                                                        }
+                                                        onChange={(checked) =>
+                                                            checked
+                                                                ? setOverride(
+                                                                      episode.identity,
+                                                                      cuts.trimStartSeconds,
+                                                                      cuts.trimEndSeconds,
+                                                                  )
+                                                                : removeOverride(episode.identity)
+                                                        }
+                                                    />
+                                                    <span>{t("podcasts.override")}</span>
+                                                </Space>
+                                                {overridden && (
+                                                    <Space>
+                                                        <InputNumber
+                                                            aria-label={t(
+                                                                "podcasts.episodeTrimStart",
+                                                                { title: episode.title },
+                                                            )}
+                                                            min={0}
+                                                            max={21600}
+                                                            precision={0}
+                                                            value={cuts.trimStartSeconds}
+                                                            disabled={
+                                                                locked || state.sourceMismatch
+                                                            }
+                                                            onChange={(value) =>
+                                                                setOverride(
+                                                                    episode.identity,
+                                                                    value ?? -1,
+                                                                    cuts.trimEndSeconds,
+                                                                )
+                                                            }
+                                                        />
+                                                        <InputNumber
+                                                            aria-label={t(
+                                                                "podcasts.episodeTrimEnd",
+                                                                { title: episode.title },
+                                                            )}
+                                                            min={0}
+                                                            max={21600}
+                                                            precision={0}
+                                                            value={cuts.trimEndSeconds}
+                                                            disabled={
+                                                                locked || state.sourceMismatch
+                                                            }
+                                                            onChange={(value) =>
+                                                                setOverride(
+                                                                    episode.identity,
+                                                                    cuts.trimStartSeconds,
+                                                                    value ?? -1,
+                                                                )
+                                                            }
+                                                        />
+                                                    </Space>
+                                                )}
+                                            </>
+                                        )}
+                                    </Space>
+                                </List.Item>
+                            );
+                        }}
                     />
                 </>
             )}
@@ -251,6 +526,18 @@ export const PodcastSubscriptionEditor = ({
                         renderItem={(episode, i) => (
                             <List.Item>
                                 {i + 1}. {episode.title}
+                                {state.capabilities.trimSupported && (
+                                    <span>
+                                        {" "}
+                                        ·{" "}
+                                        {t("podcasts.appliedCuts", {
+                                            start: episode.trimStartSeconds ?? 0,
+                                            end: episode.trimEndSeconds ?? 0,
+                                        })}
+                                        {episode.trimmedDurationSeconds !== undefined &&
+                                            ` · ${Math.round(episode.trimmedDurationSeconds)} s`}
+                                    </span>
+                                )}
                             </List.Item>
                         )}
                     />
