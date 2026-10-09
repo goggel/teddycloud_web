@@ -66,4 +66,20 @@ describe("podcast editor save integration", () => {
         await current.handleSaveChanges();
         expect(mocks.source).toHaveBeenCalledWith("0123456789abcdef", "source=new.taf", "box-1");
     });
+    it("sets explicit source flags after detaching a podcast restores its previous flags", async () => {
+        mocks.source.mockReset().mockResolvedValue(undefined);
+        const current = flow({
+            dirty: true,
+            skipSourceSave: false,
+            save: vi.fn().mockResolvedValue(undefined),
+        });
+        await current.handleSaveChanges();
+        expect(mocks.source).toHaveBeenCalledWith(
+            "0123456789abcdef",
+            "source=new.taf&nocloud=true&live=false",
+            "box-1",
+        );
+        expect(current.props.handleNoCloudClick).not.toHaveBeenCalled();
+        expect(current.props.handleLiveClick).not.toHaveBeenCalled();
+    });
 });

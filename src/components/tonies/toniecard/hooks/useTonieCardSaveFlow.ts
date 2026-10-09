@@ -166,10 +166,15 @@ export const useTonieCardSaveFlow = ({
     };
 
     const handleSourceSave = async () => {
+        const replacingPodcast = podcast?.dirty && !podcast.skipSourceSave;
         try {
             await api.apiPostTeddyCloudContentJson(
                 tonieCard.ruid,
-                "source=" + encodeURIComponent(selectedSource),
+                "source=" +
+                    encodeURIComponent(selectedSource) +
+                    (replacingPodcast
+                        ? "&nocloud=true&live=" + selectedSource.startsWith("http")
+                        : ""),
                 overlay,
             );
 
@@ -202,6 +207,7 @@ export const useTonieCardSaveFlow = ({
             throw error;
         }
 
+        if (replacingPodcast) return;
         if (!tonieCard.nocloud) {
             await handleNoCloudClick();
         }
