@@ -1,3 +1,5 @@
+import { usePodcastSubscription } from "./podcasts/usePodcastSubscription";
+import { PodcastSubscriptionEditor } from "./podcasts/PodcastSubscriptionEditor";
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, Checkbox, Tooltip, Typography, theme } from "antd";
@@ -88,6 +90,7 @@ export const TonieCard: React.FC<{
 
     const [isInformationModalOpen, setInformationModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const podcast = usePodcastSubscription(isEditModalOpen, tonieCard.ruid, overlay);
     const [isSelectFileModalOpen, setSelectFileModalOpen] = useState(false);
     const [selectedModelDisplayText, setSelectedModelDisplayText] = useState<string>("");
 
@@ -169,6 +172,7 @@ export const TonieCard: React.FC<{
     const pictureLooksUnknown = picture.endsWith("img_unknown.png");
 
     const hasPendingChanges =
+        podcast.dirty ||
         selectedSource !== (tonieCard.source || "") ||
         selectedModel !== (tonieCard.tonieInfo.model || "");
 
@@ -231,6 +235,11 @@ export const TonieCard: React.FC<{
     };
 
     const { handleSaveChanges } = useTonieCardSaveFlow({
+        podcast: {
+            dirty: podcast.dirty,
+            save: podcast.save,
+            skipSourceSave: podcast.mode === "podcast" && podcast.supported,
+        },
         tonieCard,
         overlay,
         modelTitle,
@@ -622,6 +631,16 @@ export const TonieCard: React.FC<{
 
             {isEditModalOpen && (
                 <EditTonieModal
+                    podcast={{
+                        ...podcast,
+                        editor: (
+                            <PodcastSubscriptionEditor
+                                state={podcast}
+                                disabled={readOnly}
+                                onDetached={fetchUpdatedTonieCard}
+                            />
+                        ),
+                    }}
                     open={isEditModalOpen}
                     title={editModalTitle}
                     onCancel={() => setIsEditModalOpen(false)}

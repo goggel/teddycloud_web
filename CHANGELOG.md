@@ -1,5 +1,7 @@
 # Changelog
 
+- Add prepared podcast subscriptions to the Tonie editor, with episode selection and automatic refresh (requires a matching backend).
+
 ## 0.7.1
 
 - Added "listened" status tracking for library files, incl. auto-mark on sync (opt-out) [https://github.com/toniebox-reverse-engineering/teddycloud/pull/467](https://github.com/toniebox-reverse-engineering/teddycloud/pull/467)

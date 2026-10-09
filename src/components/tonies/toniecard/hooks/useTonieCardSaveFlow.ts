@@ -9,6 +9,7 @@ import { ValidationState } from "../TonieCardTypes";
 const api = new TeddyCloudApi(defaultAPIConfig());
 
 type UseTonieCardSaveFlowParams = {
+    podcast?: { dirty: boolean; skipSourceSave: boolean; save: () => Promise<void> };
     tonieCard: TonieCardProps;
     overlay: string;
     modelTitle: string;
@@ -106,6 +107,7 @@ const shouldWarnForModelClear = ({
 
 export const useTonieCardSaveFlow = ({
     tonieCard,
+    podcast,
     overlay,
     modelTitle,
     selectedModel,
@@ -242,7 +244,8 @@ export const useTonieCardSaveFlow = ({
         }
 
         try {
-            if ((tonieCard.source || "") !== selectedSource) {
+            if (podcast?.dirty) await podcast.save();
+            if (!podcast?.skipSourceSave && (tonieCard.source || "") !== selectedSource) {
                 await handleSourceSave();
                 // When syncing source from model, always update tonie_model so backend
                 // does not show "assigned alternative content" (item vs item2 match).

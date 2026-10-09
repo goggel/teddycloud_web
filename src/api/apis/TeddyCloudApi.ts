@@ -5,6 +5,14 @@
  *
  */
 
+import type {
+    PodcastCapabilities,
+    PodcastConfig,
+    PodcastPreview,
+    PodcastSearchResult,
+    PodcastSubscription,
+} from "../../types/podcastTypes";
+
 import * as runtime from "../runtime";
 import type { Errors, OptionsList, StatsList } from "../models";
 import {
@@ -31,6 +39,102 @@ export interface ApiUploadCertPostRequest {
  *
  */
 export class TeddyCloudApi extends runtime.BaseAPI {
+    async podcastRequest<T>(
+        action: string,
+        options: {
+            overlay?: string;
+            query?: Record<string, string>;
+            body?: unknown;
+            signal?: AbortSignal;
+        } = {},
+    ): Promise<T> {
+        try {
+            const response = await this.request(
+                {
+                    path: `/api/podcasts/${action}`,
+                    method: options.body === undefined ? "GET" : "POST",
+                    headers:
+                        options.body === undefined ? {} : { "Content-Type": "application/json" },
+                    query: {
+                        ...options.query,
+                        ...(options.overlay ? { overlay: options.overlay } : {}),
+                    },
+                    body: options.body,
+                },
+                { signal: options.signal },
+            );
+            return response.json() as Promise<T>;
+        } catch (error) {
+            if (error instanceof runtime.ResponseError) {
+                const payload = await error.response
+                    .clone()
+                    .json()
+                    .catch(() => undefined);
+                if (typeof payload?.error?.message === "string")
+                    error.message = payload.error.message;
+            }
+            throw error;
+        }
+    }
+    async podcastCapabilities(signal?: AbortSignal): Promise<PodcastCapabilities> {
+        try {
+            return await this.podcastRequest("capabilities", { signal });
+        } catch (error) {
+            if (
+                error instanceof runtime.ResponseError &&
+                [404, 503].includes(error.response.status)
+            ) {
+                return { supported: false };
+            }
+            throw error;
+        }
+    }
+    podcastSubscriptions(ruid: string, overlay: string, signal?: AbortSignal) {
+        return this.podcastRequest<{ subscriptions: PodcastSubscription[] }>("subscriptions", {
+            overlay,
+            query: { ruid },
+            signal,
+        });
+    }
+    podcastSearch(q: string, signal?: AbortSignal) {
+        return this.podcastRequest<{ results: PodcastSearchResult[] }>("search", {
+            query: { q, country: "DE" },
+            signal,
+        });
+    }
+    podcastPreview(config: PodcastConfig, signal?: AbortSignal) {
+        return this.podcastRequest<PodcastPreview>("preview", { body: config, signal });
+    }
+    podcastSave(
+        ruid: string,
+        overlay: string,
+        config: PodcastConfig,
+        subscription?: PodcastSubscription,
+    ) {
+        return this.podcastRequest<{ subscription: PodcastSubscription }>("subscriptions/save", {
+            overlay,
+            body: {
+                ...config,
+                ruid,
+                ...(subscription
+                    ? { id: subscription.id, expectedRevision: subscription.revision }
+                    : {}),
+            },
+        });
+    }
+    podcastRefresh(id: string, overlay: string) {
+        return this.podcastRequest<{ jobId: string }>("subscriptions/refresh", {
+            overlay,
+            body: { id },
+        });
+    }
+    podcastDetach(subscription: PodcastSubscription, overlay: string) {
+        return this.podcastRequest<{ detached: boolean }>("subscriptions/detach", {
+            overlay,
+            body: { id: subscription.id, expectedRevision: subscription.revision },
+        });
+    }
+
     /**
      * get all tonieboxes RAW
      */

@@ -2593,5 +2593,43 @@
         "copyToClipboard": "In die Zwischenablage kopieren",
         "failedToCopied": "Kopieren fehlgeschlagen!",
         "noResults": "Keine Ergebnisse"
+    },
+    "podcasts": {
+        "title": "Podcast",
+        "normalAudio": "Audiodatei oder Radio",
+        "search": "Podcasts suchen",
+        "searchPlaceholder": "Name des Podcasts",
+        "searchFailed": "Die Suche ist nicht verfügbar. Gib stattdessen die RSS-Adresse ein.",
+        "feedUrl": "RSS-Feed-Adresse",
+        "episodeCount": "Neueste Folgen",
+        "order": "Wiedergabereihenfolge",
+        "newestFirst": "Neueste zuerst",
+        "oldestFirst": "Älteste zuerst",
+        "interval": "Prüfen alle (Stunden)",
+        "intervalHelp": "0 deaktiviert regelmäßige Prüfungen. Erlaubt: 1–168 Stunden.",
+        "enabled": "Automatische Vorbereitung aktiviert",
+        "placement": "Beim Aufstellen auf die Box prüfen",
+        "placementHelp": "Beim Aufstellen startet eine Prüfung im Hintergrund. Neue Folgen sind eventuell erst beim nächsten Abspielen oder Synchronisieren verfügbar.",
+        "preview": "Auswahl anzeigen",
+        "refresh": "Jetzt aktualisieren",
+        "detach": "Abonnement entfernen",
+        "detachConfirm": "Abonnement entfernen und die vorherige Audiozuordnung wiederherstellen? Vorbereitete Dateien bleiben erhalten.",
+        "selectedEpisodes": "Ausgewählte Folgen",
+        "preparedEpisodes": "Aktuell vorbereitete Folgen",
+        "status": "Status",
+        "lastSuccess": "Letzte erfolgreiche Prüfung",
+        "previousAvailable": "Die bisher vorbereiteten Folgen bleiben verfügbar.",
+        "notPrepared": "Noch keine Folgen vorbereitet",
+        "explanation": "Die neuesten Podcastfolgen für diesen Tonie vorbereiten. Jede Folge wird ein Kapitel. Speichern startet die Vorbereitung; sie läuft nach dem Schließen des Browsers weiter.",
+        "states": {
+            "idle": "Bereit",
+            "queued": "In Warteschlange",
+            "checking": "Wird geprüft",
+            "downloading": "Wird heruntergeladen",
+            "encoding": "Wird vorbereitet",
+            "ready": "Vorbereitet",
+            "error": "Fehler",
+            "paused": "Pausiert"
+        }
     }
 }

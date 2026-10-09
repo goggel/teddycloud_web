@@ -101,3 +101,42 @@ describe("TeddyCloudApi.apiPostTeddyCloudFormDataRaw", () => {
         expect(result.ok).toBe(false);
     });
 });
+
+describe("podcast API", () => {
+    it("encodes query and overlay independently and carries abort signals", async () => {
+        const fetchApi = vi
+            .fn()
+            .mockResolvedValue(new Response('{"subscriptions":[]}', { status: 200 }));
+        const api = new TeddyCloudApi(new Configuration({ basePath: "", fetchApi }));
+        const signal = new AbortController().signal;
+        await api.podcastSubscriptions("0123456789abcdef", "box & one", signal);
+        expect(fetchApi.mock.calls[0][0]).toBe(
+            "/api/podcasts/subscriptions?ruid=0123456789abcdef&overlay=box%20%26%20one",
+        );
+        expect(fetchApi.mock.calls[0][1].signal).toBe(signal);
+    });
+    it("posts a JSON subscription with revision and overlay", async () => {
+        const fetchApi = vi
+            .fn()
+            .mockResolvedValue(new Response('{"subscription":{}}', { status: 200 }));
+        const api = new TeddyCloudApi(new Configuration({ basePath: "", fetchApi }));
+        const config = {
+            feedUrl: "https://example.org/feed",
+            episodeCount: 5,
+            order: "newest_first" as const,
+            intervalHours: 6,
+            enabled: true,
+            refreshOnPlacement: false,
+        };
+        await api.podcastSave("0123456789abcdef", "box-1", config);
+        const [url, init] = fetchApi.mock.calls[0];
+        expect(url).toBe("/api/podcasts/subscriptions/save?overlay=box-1");
+        expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
+        expect(JSON.parse(init.body)).toEqual({ ...config, ruid: "0123456789abcdef" });
+    });
+    it("treats an older backend as unsupported", async () => {
+        const fetchApi = vi.fn().mockResolvedValue(new Response(null, { status: 404 }));
+        const api = new TeddyCloudApi(new Configuration({ basePath: "", fetchApi }));
+        expect(await api.podcastCapabilities()).toEqual({ supported: false });
+    });
+});
