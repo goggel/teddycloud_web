@@ -170,12 +170,22 @@ describe("Tonie save recovery", () => {
     });
     it("uses the editor's revision through polling and retries only after explicit readback", async () => {
         const value = params();
-        Object.assign(value.sourceEditor, { selectedKind: "podcast", originalKind: "podcast", dirtyKinds: ["podcast"] });
+        Object.assign(value.sourceEditor, {
+            selectedKind: "podcast",
+            originalKind: "podcast",
+            dirtyKinds: ["podcast"],
+        });
         value.sourceEditor.drafts.podcast.feedUrl = "https://example.org/feed";
         value.selectedModel = "old";
         const old = {
-            ...value.sourceEditor.drafts.podcast, id: "a".repeat(32), revision: 4,
-            ruid: card().ruid, overlay: "box-1", state: "ready", episodes: [], ownsAssignment: true,
+            ...value.sourceEditor.drafts.podcast,
+            id: "a".repeat(32),
+            revision: 4,
+            ruid: card().ruid,
+            overlay: "box-1",
+            state: "ready",
+            episodes: [],
+            ownsAssignment: true,
         } as PodcastSubscription;
         value.podcast.editingSubscription = old;
         Object.assign(value.podcast, { subscription: { ...old, revision: 5 } });
