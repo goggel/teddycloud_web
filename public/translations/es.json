@@ -2594,6 +2594,28 @@
         "failedToCopied": "¡Error al copiar!",
         "noResults": "Sin resultados"
     },
+    "sources": {
+        "source": "Fuente de audio",
+        "audio": "Archivos de audio",
+        "radio": "Radio",
+        "ard": "ARD Audiothek / Sounds",
+        "radioUrl": "URL del streaming",
+        "stationName": "Nombre de la emisora",
+        "noStation": "Ninguna emisora seleccionada",
+        "selectedName": "Programa seleccionado",
+        "preparedTitle": "Último programa preparado",
+        "saveFailed": "Guardado incompleto.",
+        "savedProfiles": "Perfiles guardados: {{names}}.",
+        "actualSource": "Fuente activa: {{kind}} ({{value}}).",
+        "readbackFailed": "No se pudo volver a leer el estado del servidor.",
+        "stageProfile": "Perfil",
+        "stagePodcast": "Suscripción de pódcast",
+        "stageDetach": "Desvincular suscripción",
+        "stageSource": "Asignación de fuente",
+        "stageModel": "Asignación de modelo",
+        "invalidDirect": "La fuente activa debe ser una URL o ruta válida de hasta 255 bytes UTF-8",
+        "legacyOwnership": "Este servidor no puede confirmar la propiedad de la suscripción. Recarga la tarjeta e inténtalo de nuevo"
+    },
     "podcasts": {
         "title": "Podcast",
         "normalAudio": "Audio file or radio",

@@ -21,6 +21,7 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
     const [capabilities, setCapabilities] = useState<PodcastCapabilities>({ supported: false });
     const [supported, setSupported] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [initialized, setInitialized] = useState(false);
     const [mode, setMode] = useState<"audio" | "podcast">("audio");
     const [draft, setDraft] = useState<PodcastDraft>(defaultPodcastConfig);
     const [subscription, setSubscription] = useState<PodcastSubscription>();
@@ -41,6 +42,7 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
         const controller = new AbortController();
         let timer: ReturnType<typeof setTimeout> | undefined;
         setLoading(true);
+        setInitialized(false);
         setBusy(false);
         setMode("audio");
         setSubscription(undefined);
@@ -56,6 +58,7 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
                     setSupported(capabilities.supported);
                     if (!capabilities.supported) {
                         setError(capabilities.message || "");
+                        setInitialized(true);
                         return;
                     }
                 }
@@ -72,11 +75,13 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
                         key: current?.sourceKey ?? "",
                     });
                     setMode(current ? "podcast" : "audio");
+                    setInitialized(true);
                 }
                 timer = setTimeout(() => void poll(false), 2000);
             } catch (cause) {
                 if (!controller.signal.aborted) {
                     setError(String(cause));
+                    if (initial) setInitialized(true);
                     if (!initial) timer = setTimeout(() => void poll(false), 5000);
                 }
             } finally {
@@ -155,6 +160,17 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
                 baseline.current = defaultPodcastConfig();
             }
         });
+    const recordSubscription = (current?: PodcastSubscription) => {
+        editingBase.current = current;
+        setSubscription(current);
+    };
+    const reloadSubscription = async () => {
+        if (!supported) return undefined;
+        const response = await api.podcastSubscriptions(ruid, overlay);
+        const current = response.subscriptions[0];
+        recordSubscription(current);
+        return current;
+    };
     return {
         capabilities,
         resolvedSource,
@@ -164,16 +180,20 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
         valid,
         supported,
         loading,
+        initialized,
         mode,
         setMode,
         draft,
         setDraft,
         subscription,
+        editingSubscription: editingBase.current,
         error,
         busy,
         dirty,
         save,
         refresh,
         detach,
+        recordSubscription,
+        reloadSubscription,
     };
 };

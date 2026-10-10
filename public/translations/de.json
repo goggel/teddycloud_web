@@ -2594,6 +2594,28 @@
         "failedToCopied": "Kopieren fehlgeschlagen!",
         "noResults": "Keine Ergebnisse"
     },
+    "sources": {
+        "source": "Audioquelle",
+        "audio": "Audiodateien",
+        "radio": "Radio",
+        "ard": "ARD Audiothek / Sounds",
+        "radioUrl": "Stream-URL",
+        "stationName": "Sendername",
+        "noStation": "Noch kein Sender ausgewählt",
+        "selectedName": "Ausgewählte Sendung",
+        "preparedTitle": "Zuletzt vorbereitete Sendung",
+        "saveFailed": "Speichern unvollständig.",
+        "savedProfiles": "Gespeicherte Profile: {{names}}.",
+        "actualSource": "Tatsächlich aktiv: {{kind}} ({{value}}).",
+        "readbackFailed": "Der aktuelle Serverzustand konnte nicht erneut gelesen werden.",
+        "stageProfile": "Profil",
+        "stagePodcast": "Podcast-Abonnement",
+        "stageDetach": "Abonnement lösen",
+        "stageSource": "Quellzuordnung",
+        "stageModel": "Modellzuordnung",
+        "invalidDirect": "Die aktive Quelle muss eine gültige URL oder ein Pfad mit höchstens 255 UTF-8-Bytes sein",
+        "legacyOwnership": "Dieser Server kann die Abonnementzuordnung nicht sicher bestimmen. Karte neu laden und erneut versuchen"
+    },
     "podcasts": {
         "title": "Podcast",
         "normalAudio": "Audiodatei oder Radio",

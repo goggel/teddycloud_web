@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { defaultAPIConfig } from "../../../../config/defaultApiConfig";
 import { TeddyCloudApi } from "../../../../api";
 import { NotificationTypeEnum } from "../../../../types/teddyCloudNotificationTypes";
@@ -5,19 +6,24 @@ import { TonieCardProps } from "../../../../types/tonieTypes";
 import { toModelKey } from "../../hooks/useCustomModelKeys";
 import { showAudioModelMismatchConfirm } from "../modals/AudioModelMismatchConfirmModal";
 import { ValidationState } from "../TonieCardTypes";
+import { useAudioSourceEditor } from "../sources/useAudioSourceEditor";
+import { usePodcastSubscription } from "../podcasts/usePodcastSubscription";
+import { profilesToPersist, saveAudioSource, SourceSaveError } from "../sources/saveAudioSource";
+import { activeSourceKind } from "../sources/sourceProfiles";
+import { AudioSourceKind } from "../../../../types/audioSourceTypes";
 
 const api = new TeddyCloudApi(defaultAPIConfig());
 
-type UseTonieCardSaveFlowParams = {
-    podcast?: { dirty: boolean; skipSourceSave: boolean; save: () => Promise<void> };
+type Params = {
+    sourceEditor: ReturnType<typeof useAudioSourceEditor>;
+    profilesSupported: boolean;
+    podcast: ReturnType<typeof usePodcastSubscription>;
     tonieCard: TonieCardProps;
     overlay: string;
-    modelTitle: string;
     selectedModel: string;
-    selectedSource: string;
     resolvedAudioModel: string;
     modelAudioPath: string | null;
-    fetchUpdatedTonieCard: () => Promise<void>;
+    fetchUpdatedTonieCard: () => Promise<TonieCardProps | undefined>;
     setIsEditModalOpen: (open: boolean) => void;
     setInputValidationModel: (value: ValidationState) => void;
     setInputValidationSource: (value: ValidationState) => void;
@@ -28,90 +34,35 @@ type UseTonieCardSaveFlowParams = {
         description: string,
         context?: string,
     ) => void;
-    handleNoCloudClick: () => Promise<void>;
-    handleLiveClick: () => Promise<void>;
 };
 
-const notifySuccess = (
-    addNotification: UseTonieCardSaveFlowParams["addNotification"],
-    t: UseTonieCardSaveFlowParams["t"],
-    message: string,
-    description: string,
-) => {
-    addNotification(NotificationTypeEnum.Success, message, description, t("tonies.title"));
-};
-
-const notifyError = (
-    addNotification: UseTonieCardSaveFlowParams["addNotification"],
-    t: UseTonieCardSaveFlowParams["t"],
-    message: string,
-    description: string,
-    error?: unknown,
-) => {
-    addNotification(
-        NotificationTypeEnum.Error,
-        message,
-        `${description}${error ?? ""}`,
-        t("tonies.title"),
-    );
-};
-
-const validateSelectedModelExists = async (
-    modelValue: string,
-    overlay: string,
-): Promise<boolean> => {
-    const trimmedModel = modelValue.trim();
-    if (!trimmedModel) {
-        return true;
-    }
-
+const validateSelectedModelExists = async (modelValue: string, overlay: string) => {
+    const trimmed = modelValue.trim();
+    if (!trimmed) return true;
     try {
-        const searchValue = encodeURIComponent(trimmedModel);
         const response = await api.apiGetTeddyCloudApiRaw(
-            `/api/toniesJsonSearch?searchModel=${searchValue}&searchSeries=&searchEpisode=`,
+            `/api/toniesJsonSearch?searchModel=${encodeURIComponent(trimmed)}&searchSeries=&searchEpisode=`,
             overlay,
         );
-        const data = await response.json();
-        const entries = Array.isArray(data) ? data : [];
-        return entries.some(
-            (entry: { model?: string }) => toModelKey(entry?.model) === toModelKey(trimmedModel),
+        const entries = await response.json();
+        return (
+            Array.isArray(entries) &&
+            entries.some(
+                (entry: { model?: string }) => toModelKey(entry?.model) === toModelKey(trimmed),
+            )
         );
     } catch {
         return false;
     }
 };
 
-const shouldWarnForModelClear = ({
-    tonieCard,
-    selectedSource,
-    selectedModel,
-    resolvedAudioModel,
-    needsModelSave,
-}: {
-    tonieCard: TonieCardProps;
-    selectedSource: string;
-    selectedModel: string;
-    resolvedAudioModel: string;
-    needsModelSave: boolean;
-}) => {
-    const nextSource = (selectedSource || "").trim();
-    const audioModel = (resolvedAudioModel || tonieCard.sourceInfo?.model || "").trim();
-    const hasAssignedAudio = Boolean(nextSource);
-    const isClearingModel = needsModelSave && selectedModel.trim() === "";
-
-    return {
-        warn: isClearingModel && hasAssignedAudio && Boolean(audioModel),
-        audioModel,
-    };
-};
-
 export const useTonieCardSaveFlow = ({
-    tonieCard,
+    sourceEditor,
+    profilesSupported,
     podcast,
+    tonieCard,
     overlay,
-    modelTitle,
     selectedModel,
-    selectedSource,
     resolvedAudioModel,
     modelAudioPath,
     fetchUpdatedTonieCard,
@@ -120,9 +71,11 @@ export const useTonieCardSaveFlow = ({
     setInputValidationSource,
     t,
     addNotification,
-    handleNoCloudClick,
-    handleLiveClick,
-}: UseTonieCardSaveFlowParams) => {
+}: Params) => {
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+    const saving = useRef(false);
+
     const handleModelSave = async () => {
         try {
             await api.apiPostTeddyCloudContentJson(
@@ -130,150 +83,178 @@ export const useTonieCardSaveFlow = ({
                 "tonie_model=" + encodeURIComponent(selectedModel),
                 overlay,
             );
-
-            notifySuccess(
-                addNotification,
-                t,
-                t("tonies.messages.setTonieToModelSuccessful", {
-                    selectedModel: selectedModel
-                        ? selectedModel
-                        : t("tonies.messages.setToEmptyValue"),
-                }),
-                t("tonies.messages.setTonieToModelSuccessfulDetails", {
-                    ruid: tonieCard.ruid,
-                    selectedModel: selectedModel
-                        ? selectedModel
-                        : t("tonies.messages.setToEmptyValue"),
-                }),
-            );
             setInputValidationModel({ validateStatus: "", help: "" });
-        } catch (error) {
-            notifyError(
-                addNotification,
-                t,
-                t("tonies.messages.setTonieToModelFailed"),
-                t("tonies.messages.setTonieToModelFailedDetails", {
-                    ruid: tonieCard.ruid,
-                }),
-                error,
-            );
-            setInputValidationModel({
-                validateStatus: "error",
-                help: t("tonies.messages.setTonieToModelFailed") + String(error ?? ""),
-            });
-            throw error;
-        }
-    };
-
-    const handleSourceSave = async () => {
-        const replacingPodcast = podcast?.dirty && !podcast.skipSourceSave;
-        try {
-            await api.apiPostTeddyCloudContentJson(
-                tonieCard.ruid,
-                "source=" +
-                    encodeURIComponent(selectedSource) +
-                    (replacingPodcast
-                        ? "&nocloud=true&live=" + selectedSource.startsWith("http")
-                        : ""),
-                overlay,
-            );
-
-            notifySuccess(
-                addNotification,
-                t,
-                t("tonies.messages.setTonieToSourceSuccessful"),
-                t("tonies.messages.setTonieToSourceSuccessfulDetails", {
-                    ruid: tonieCard.ruid,
-                    selectedSource: selectedSource
-                        ? selectedSource
-                        : t("tonies.messages.setToEmptyValue"),
-                }),
-            );
-            setInputValidationSource({ validateStatus: "", help: "" });
-        } catch (error) {
-            notifyError(
-                addNotification,
-                t,
-                t("tonies.messages.setTonieToSourceFailed"),
-                t("tonies.messages.setTonieToSourceFailedDetails", {
-                    ruid: tonieCard.ruid,
-                }),
-                error,
-            );
-            setInputValidationSource({
-                validateStatus: "error",
-                help: t("tonies.messages.setTonieToSourceFailed") + String(error ?? ""),
-            });
-            throw error;
-        }
-
-        if (replacingPodcast) return;
-        if (!tonieCard.nocloud) {
-            await handleNoCloudClick();
-        }
-        const shouldBeLive = selectedSource.startsWith("http");
-        if (shouldBeLive !== tonieCard.live) {
-            await handleLiveClick();
+        } catch (cause) {
+            setInputValidationModel({ validateStatus: "error", help: String(cause) });
+            throw cause;
         }
     };
 
     const handleSaveChanges = async () => {
-        const needsModelSave = (tonieCard.tonieInfo.model || "") !== selectedModel;
-        const trimmedSelectedModel = selectedModel.trim();
-
-        if (needsModelSave && trimmedSelectedModel) {
-            const modelIsValid = await validateSelectedModelExists(trimmedSelectedModel, overlay);
-            if (!modelIsValid) {
+        if (saving.current || sourceEditor.loading || !podcast.initialized) return;
+        saving.current = true;
+        setBusy(true);
+        setError("");
+        const targetKind = sourceEditor.selectedKind;
+        let completedProfiles: AudioSourceKind[] = [];
+        let sourceCommitted = false;
+        try {
+            const needsModelSave = (tonieCard.tonieInfo.model || "") !== selectedModel;
+            const targetSource =
+                targetKind === "radio"
+                    ? sourceEditor.drafts.radio.source
+                    : targetKind === "audio"
+                      ? sourceEditor.drafts.audio.source
+                      : tonieCard.source || "";
+            if (needsModelSave && !(await validateSelectedModelExists(selectedModel, overlay))) {
                 setInputValidationModel({
                     validateStatus: "error",
-                    help: t("tonies.editModal.invalidModelError", { model: trimmedSelectedModel }),
+                    help: t("tonies.editModal.invalidModelError", { model: selectedModel.trim() }),
                 });
                 return;
             }
-        }
+            if (
+                needsModelSave &&
+                !selectedModel.trim() &&
+                targetSource.trim() &&
+                (resolvedAudioModel || tonieCard.sourceInfo?.model || "").trim()
+            ) {
+                const confirmed = await showAudioModelMismatchConfirm(
+                    t,
+                    (resolvedAudioModel || tonieCard.sourceInfo?.model || "").trim(),
+                );
+                if (!confirmed) return;
+            }
 
-        const { warn: shouldWarnAutoModelReset, audioModel } = shouldWarnForModelClear({
-            tonieCard,
-            selectedSource,
-            selectedModel,
-            resolvedAudioModel,
-            needsModelSave,
-        });
-        if (shouldWarnAutoModelReset) {
-            const confirmed = await showAudioModelMismatchConfirm(
-                t,
-                audioModel || t("tonies.confirmAudioModelMismatchModal.unknownModel"),
+            const dirtyKinds = profilesToPersist(
+                sourceEditor.dirtyKinds,
+                sourceEditor.missingKinds,
+                sourceEditor.originalKind,
+                targetKind,
             );
-            if (!confirmed) {
-                return;
-            }
-        }
 
-        try {
-            if (podcast?.dirty) await podcast.save();
-            if (!podcast?.skipSourceSave && (tonieCard.source || "") !== selectedSource) {
-                await handleSourceSave();
-                // When syncing source from model, always update tonie_model so backend
-                // does not show "assigned alternative content" (item vs item2 match).
-                if (selectedModel && modelAudioPath && selectedSource === modelAudioPath) {
-                    await handleModelSave();
-                }
-            }
-            if (needsModelSave) {
+            completedProfiles = await saveAudioSource(
+                {
+                    ruid: tonieCard.ruid,
+                    overlay,
+                    currentKind: sourceEditor.originalKind,
+                    selectedKind: targetKind,
+                    currentSource: tonieCard.source || "",
+                    drafts: sourceEditor.drafts,
+                    dirtyKinds,
+                    profileRevision: sourceEditor.revision,
+                    profilesSupported,
+                    subscription: podcast.editingSubscription,
+                    podcastCapabilities: podcast.capabilities,
+                },
+                {
+                    saveProfile: (kind, revision, profile) =>
+                        api.saveSourceProfile(tonieCard.ruid, overlay, kind, revision, profile),
+                    savePodcast: async (config, subscription) =>
+                        (await api.podcastSave(tonieCard.ruid, overlay, config, subscription))
+                            .subscription,
+                    detachPodcast: async (subscription) => {
+                        await api.podcastDetach(subscription, overlay);
+                    },
+                    assignDirectSource: async (source, live) => {
+                        await api.apiPostTeddyCloudContentJson(
+                            tonieCard.ruid,
+                            `source=${encodeURIComponent(source)}&nocloud=true&live=${live}`,
+                            overlay,
+                        );
+                        setInputValidationSource({ validateStatus: "", help: "" });
+                    },
+                    recordProfile: sourceEditor.recordSaved,
+                    recordSubscription: podcast.recordSubscription,
+                    recordActivation: sourceEditor.recordActivation,
+                },
+            );
+            sourceCommitted = true;
+            // A model-audio selection also needs an explicit model assignment.
+            if (selectedModel && modelAudioPath && targetSource === modelAudioPath) {
+                await handleModelSave();
+            } else if (needsModelSave) {
                 await handleModelSave();
             }
-        } catch {
+            setIsEditModalOpen(false);
             await fetchUpdatedTonieCard();
-            return;
+        } catch (cause) {
+            // Each operation has already committed independently. Read back the
+            // server truth but retain all local drafts and the selected target.
+            const [subscriptionResult, cardResult, profilesResult] = await Promise.allSettled([
+                podcast.reloadSubscription(),
+                fetchUpdatedTonieCard(),
+                profilesSupported
+                    ? api.sourceProfiles(tonieCard.ruid, overlay)
+                    : Promise.resolve(undefined),
+            ]);
+            const confirmed =
+                cause instanceof SourceSaveError ? cause.savedProfiles : completedProfiles;
+            const names = confirmed
+                .map((kind: AudioSourceKind) =>
+                    t(kind === "podcast" ? "podcasts.title" : `sources.${kind}`),
+                )
+                .join(", ");
+            const reason =
+                cause instanceof SourceSaveError && cause.reason
+                    ? t(`sources.${cause.reason}`)
+                    : cause instanceof SourceSaveError
+                      ? cause.message
+                      : String(cause);
+            let detail = `${t("sources.saveFailed")} ${cause instanceof SourceSaveError ? t(`sources.stage${cause.stage[0].toUpperCase()}${cause.stage.slice(1)}`) : t("sources.stageModel")}: ${reason}. ${t("sources.savedProfiles", { names: names || "—" })}`;
+            if (
+                cardResult.status === "fulfilled" &&
+                cardResult.value &&
+                subscriptionResult.status === "fulfilled" &&
+                (!profilesSupported ||
+                    (profilesResult.status === "fulfilled" && profilesResult.value))
+            ) {
+                const assignment = {
+                    source: cardResult.value.source || "",
+                    subscription: subscriptionResult.value,
+                };
+                if (
+                    profilesSupported &&
+                    profilesResult.status === "fulfilled" &&
+                    profilesResult.value
+                )
+                    sourceEditor.reconcile(profilesResult.value, assignment);
+                const profiles =
+                    profilesResult.status === "fulfilled"
+                        ? profilesResult.value?.profiles
+                        : undefined;
+                let active = activeSourceKind(assignment, profiles);
+                if (
+                    !profilesSupported &&
+                    sourceCommitted &&
+                    (targetKind === "audio" || targetKind === "radio") &&
+                    assignment.source === sourceEditor.drafts[targetKind].source
+                )
+                    active = targetKind;
+                if (!profilesSupported) sourceEditor.recordActivation(active);
+                const label = t(active === "podcast" ? "podcasts.title" : `sources.${active}`);
+                const value =
+                    active === "podcast" || active === "ard"
+                        ? subscriptionResult.value?.displayName ||
+                          subscriptionResult.value?.ardShowUrl ||
+                          subscriptionResult.value?.feedUrl ||
+                          assignment.source
+                        : assignment.source;
+                detail += ` ${t("sources.actualSource", { kind: label, value: value || "—" })}`;
+            } else {
+                detail += ` ${t("sources.readbackFailed")}`;
+            }
+            setError(detail);
+            addNotification(
+                NotificationTypeEnum.Error,
+                t("tonies.messages.setTonieToSourceFailed"),
+                detail,
+                t("tonies.title"),
+            );
+        } finally {
+            saving.current = false;
+            setBusy(false);
         }
-
-        setIsEditModalOpen(false);
-        await fetchUpdatedTonieCard();
     };
-
-    return {
-        handleModelSave,
-        handleSourceSave,
-        handleSaveChanges,
-    };
+    return { handleSaveChanges, busy, error };
 };

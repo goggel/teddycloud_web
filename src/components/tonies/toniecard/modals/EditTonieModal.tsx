@@ -15,20 +15,17 @@ import {
 import {
     CloseOutlined,
     EditOutlined,
-    FolderOpenOutlined,
     InfoCircleOutlined,
     PlusOutlined,
     RollbackOutlined,
     SaveFilled,
-    StepBackwardOutlined,
-    StepForwardOutlined,
     SwapOutlined,
 } from "@ant-design/icons";
 
 import { ToniesJsonSearch } from "../../common/searches/ToniesJsonSearch";
-import { RadioStreamSearch } from "../search/RadioStreamSearch";
 import { toModelKey } from "../../utils/modelKey";
-import { useAssignSiblingEpisode } from "../hooks/useAssignSiblingEpisode";
+import { AudioSourceKind } from "../../../../types/audioSourceTypes";
+import { AudioFileSourceEditor } from "../sources/AudioFileSourceEditor";
 
 const { useToken } = theme;
 const { Text } = Typography;
@@ -36,11 +33,12 @@ const { Text } = Typography;
 type ValidateStatus = "" | "success" | "warning" | "error" | "validating" | undefined;
 
 interface EditTonieModalProps {
-    podcast?: {
-        supported: boolean;
+    sourceEditor: {
+        kind: AudioSourceKind;
+        setKind: (kind: AudioSourceKind) => void;
+        podcastSupported: boolean;
+        ardSupported: boolean;
         valid: boolean;
-        mode: "audio" | "podcast";
-        setMode: (mode: "audio" | "podcast") => void;
         editor: React.ReactNode;
         loading: boolean;
         busy: boolean;
@@ -60,8 +58,6 @@ interface EditTonieModalProps {
         help: string;
     };
     setInputValidationSource: (state: { validateStatus: ValidateStatus; help: string }) => void;
-    keyRadioStreamSearch: number;
-    onSearchRadioChange: (value: string) => void;
 
     // Model
     selectedModel: string;
@@ -107,7 +103,7 @@ interface EditTonieModalProps {
 
 export const EditTonieModal: React.FC<EditTonieModalProps> = ({
     open,
-    podcast,
+    sourceEditor,
     title,
     onCancel,
     onSave,
@@ -116,8 +112,6 @@ export const EditTonieModal: React.FC<EditTonieModalProps> = ({
     originalSource,
     inputValidationSource,
     setInputValidationSource,
-    keyRadioStreamSearch,
-    onSearchRadioChange,
     selectedModel,
     onSelectedModelChange,
     originalModel,
@@ -143,29 +137,6 @@ export const EditTonieModal: React.FC<EditTonieModalProps> = ({
     const { t } = useTranslation();
     const { token } = useToken();
 
-    const {
-        nextEpisodeAvailable,
-        prevEpisodeAvailable,
-        nextEpisodeFile,
-        prevEpisodeFile,
-        handleAssignNextEpisode,
-        handleAssignPrevEpisode,
-    } = useAssignSiblingEpisode({
-        source: selectedSource,
-        onSelectedSourceChange,
-        setInputValidationSource,
-    });
-
-    const handleClearSource = () => {
-        onSelectedSourceChange("");
-        setInputValidationSource({ validateStatus: "", help: "" });
-    };
-
-    const handleRollbackSource = () => {
-        onSelectedSourceChange(originalSource);
-        setInputValidationSource({ validateStatus: "", help: "" });
-    };
-
     const handleClearModel = () => {
         onSelectedModelChange("");
         setInputValidationModel({ validateStatus: "", help: "" });
@@ -176,83 +147,22 @@ export const EditTonieModal: React.FC<EditTonieModalProps> = ({
         setInputValidationModel({ validateStatus: "", help: "" });
     };
 
-    const normalized = (value?: string | null) =>
-        String(value || "")
-            .trim()
-            .toLowerCase();
-    const isSourceUnchanged = selectedSource === (originalSource || "");
     const isModelUnchanged = selectedModel === (originalModel || "");
-    const sourceMatchesModelAudio =
-        Boolean(modelAudioPath) && normalized(selectedSource) === normalized(modelAudioPath);
-    const showSyncActions = !sourceMatchesModelAudio;
     const normalizedAudioModelForSet = (audioModelForSet || "").trim();
-    // Show when model has a tonies.json mapping and source ≠ model audio; enable once library path resolved.
-    const showSetAudioFromModelAction =
-        showSyncActions && Boolean(selectedModel.trim()) && Boolean(modelAudioHasMapping);
     const showSetModelFromAudioAction =
-        showSyncActions &&
         Boolean(normalizedAudioModelForSet) &&
         Boolean(onSetModelFromAudio) &&
         toModelKey(selectedModel) !== toModelKey(normalizedAudioModelForSet);
-    const setAudioFromModelDisabled = showSetAudioFromModelAction && !modelAudioPath;
-    const setAudioFromModelTooltip = !modelAudioPath
-        ? t("tonies.editModal.setAudioFromModelUnavailableInLibrary")
-        : undefined;
-
-    const assignNextEpisodeAction = (
-        <Tooltip
-            key="assignNextEpisode"
-            title={
-                nextEpisodeAvailable
-                    ? t("tonies.assignNextEpisode.action", {
-                          file: nextEpisodeFile?.tonieInfo?.episode
-                              ? nextEpisodeFile?.tonieInfo?.episode
-                              : nextEpisodeFile?.name,
-                      })
-                    : t("tonies.assignNextEpisode.noneLeft")
-            }
-        >
-            <StepForwardOutlined
-                key="assignNextEpisode"
-                style={
-                    nextEpisodeAvailable
-                        ? undefined
-                        : { cursor: "default", color: token.colorTextDisabled }
-                }
-                onClick={nextEpisodeAvailable ? handleAssignNextEpisode : undefined}
-            />
-        </Tooltip>
-    );
-
-    const assignPrevEpisodeAction = (
-        <Tooltip
-            key="assignPrevEpisode"
-            title={
-                prevEpisodeAvailable
-                    ? t("tonies.assignPrevEpisode.action", {
-                          file: prevEpisodeFile?.tonieInfo?.episode
-                              ? prevEpisodeFile?.tonieInfo?.episode
-                              : prevEpisodeFile?.name,
-                      })
-                    : t("tonies.assignPrevEpisode.noneLeft")
-            }
-        >
-            <StepBackwardOutlined
-                key="assignPrevEpisode"
-                style={
-                    prevEpisodeAvailable
-                        ? undefined
-                        : { cursor: "default", color: token.colorTextDisabled }
-                }
-                onClick={prevEpisodeAvailable ? handleAssignPrevEpisode : undefined}
-            />
-        </Tooltip>
-    );
 
     return (
         <Modal
             open={open}
-            onCancel={onCancel}
+            onCancel={() => {
+                if (!sourceEditor.busy) onCancel();
+            }}
+            closable={!sourceEditor.busy}
+            keyboard={!sourceEditor.busy}
+            mask={{ closable: !sourceEditor.busy }}
             title={title}
             footer={
                 <Button
@@ -260,9 +170,9 @@ export const EditTonieModal: React.FC<EditTonieModalProps> = ({
                     onClick={onSave}
                     disabled={
                         !hasPendingChanges ||
-                        podcast?.loading ||
-                        podcast?.busy ||
-                        (podcast?.supported && podcast.mode === "podcast" && !podcast.valid)
+                        sourceEditor.loading ||
+                        sourceEditor.busy ||
+                        !sourceEditor.valid
                     }
                 >
                     <SaveFilled key="saveClick" /> {t("tonies.editModal.save")}
@@ -270,260 +180,196 @@ export const EditTonieModal: React.FC<EditTonieModalProps> = ({
             }
             width={700}
         >
-            <Divider orientation="horizontal" titlePlacement="left">
-                {t("tonies.editModal.source")}
-            </Divider>
-            {podcast?.supported && (
+            <fieldset
+                disabled={sourceEditor.busy}
+                aria-disabled={sourceEditor.busy}
+                style={{
+                    border: 0,
+                    margin: 0,
+                    padding: 0,
+                    width: "100%",
+                    pointerEvents: sourceEditor.busy ? "none" : undefined,
+                }}
+            >
+                <Divider orientation="horizontal" titlePlacement="left">
+                    {t("tonies.editModal.source")}
+                </Divider>
                 <Select
-                    value={podcast.mode}
-                    onChange={podcast.setMode}
-                    disabled={podcast.loading || podcast.busy}
+                    aria-label={t("sources.source")}
+                    value={sourceEditor.kind}
+                    onChange={sourceEditor.setKind}
+                    disabled={sourceEditor.loading || sourceEditor.busy}
                     style={{ width: "100%", marginBottom: 16 }}
                     options={[
-                        { value: "audio", label: t("podcasts.normalAudio") },
-                        { value: "podcast", label: t("podcasts.title") },
+                        { value: "audio", label: t("sources.audio") },
+                        { value: "radio", label: t("sources.radio") },
+                        {
+                            value: "podcast",
+                            label: t("podcasts.title"),
+                            disabled: !sourceEditor.podcastSupported,
+                        },
+                        {
+                            value: "ard",
+                            label: t("sources.ard"),
+                            disabled: !sourceEditor.ardSupported,
+                        },
                     ]}
                 />
-            )}
-            {podcast?.error && podcast.mode !== "podcast" && (
-                <Alert type="error" title={podcast.error} />
-            )}
-            {podcast?.mode === "podcast" && podcast.supported ? (
-                podcast.editor
-            ) : (
-                <div>
-                    <Form.Item
-                        validateStatus={inputValidationSource.validateStatus}
-                        help={inputValidationSource.help}
-                    >
-                        <Input
-                            key="source"
-                            value={selectedSource}
-                            width="auto"
-                            onChange={(e) => onSelectedSourceChange(e.target.value)}
-                            prefix={[
-                                <CloseOutlined
-                                    key="close-source"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={handleClearSource}
-                                />,
-                                <Divider
-                                    key="divider-source-1"
-                                    orientation="vertical"
-                                    style={{ marginLeft: 2 }}
-                                />,
-                                <RollbackOutlined
-                                    key="rollback-source"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={handleRollbackSource}
-                                    style={{
-                                        color: isSourceUnchanged
-                                            ? token.colorTextDisabled
-                                            : token.colorText,
-                                        cursor: isSourceUnchanged ? "default" : "pointer",
-                                    }}
-                                    className={isSourceUnchanged ? "disabled" : "enabled"}
-                                />,
-                                <Divider
-                                    key="divider-source-2"
-                                    orientation="vertical"
-                                    style={{ marginLeft: 2 }}
-                                />,
-                            ]}
-                            suffix={[
-                                audioInfoTooltip ? (
-                                    <Tooltip
-                                        key="audio-info"
-                                        trigger={["hover", "click"]}
-                                        title={audioInfoTooltip}
-                                    >
-                                        <InfoCircleOutlined
-                                            onMouseDown={(e) => e.preventDefault()}
-                                        />
-                                    </Tooltip>
-                                ) : null,
-                                audioInfoTooltip ? (
-                                    <Divider
-                                        key="divider-source-info"
-                                        orientation="vertical"
-                                        style={{ marginLeft: 2 }}
-                                    />
-                                ) : null,
-                                prevEpisodeAvailable || nextEpisodeAvailable
-                                    ? assignPrevEpisodeAction
-                                    : null,
-                                prevEpisodeAvailable || nextEpisodeAvailable
-                                    ? assignNextEpisodeAction
-                                    : null,
-                                prevEpisodeAvailable || nextEpisodeAvailable ? (
-                                    <Divider
-                                        key="divider-assign-sibling-episode"
-                                        orientation="vertical"
-                                        style={{ marginLeft: 2 }}
-                                    />
-                                ) : null,
-                                <FolderOpenOutlined
-                                    key="select-file"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={onOpenFileSelectModal}
-                                />,
-                            ]}
-                        />
-                        <RadioStreamSearch
-                            placeholder={t("tonies.editModal.placeholderSearchForARadioStream")}
-                            onChange={onSearchRadioChange}
-                            key={keyRadioStreamSearch}
-                        />
-                        {showSetAudioFromModelAction && (
-                            <Form.Item style={{ marginTop: 8, marginBottom: 0 }}>
-                                <Button
-                                    type="default"
-                                    icon={<SwapOutlined />}
-                                    disabled={setAudioFromModelDisabled}
-                                    onClick={() => {
-                                        if (!modelAudioPath) return;
-                                        onSelectedSourceChange(modelAudioPath);
-                                        setInputValidationSource({ validateStatus: "", help: "" });
-                                    }}
-                                >
-                                    {t("tonies.editModal.setAudioFromModel")}
-                                </Button>
-                            </Form.Item>
-                        )}
-                    </Form.Item>
-                </div>
-            )}
-
-            <Divider orientation="horizontal" titlePlacement="left">
-                {t("tonies.editModal.model")}
-            </Divider>
-            <div>
-                {modelReadOnly ? (
-                    <Form.Item>
-                        <Input
-                            value={modelDisplayText || selectedModel || originalModel}
-                            readOnly
-                            disabled
-                            style={{ color: token.colorText, cursor: "default" }}
-                            suffix={
-                                modelInfoTooltip ? (
-                                    <Tooltip trigger={["hover", "click"]} title={modelInfoTooltip}>
-                                        <InfoCircleOutlined
-                                            onMouseDown={(e) => e.preventDefault()}
-                                        />
-                                    </Tooltip>
-                                ) : null
-                            }
-                        />
-                        <Text
-                            type="secondary"
-                            style={{ fontSize: 12, display: "block", marginTop: 4 }}
-                        >
-                            {t("tonies.editModal.modelReadOnlyHint")}
-                        </Text>
-                    </Form.Item>
+                {sourceEditor.error && <Alert type="error" title={sourceEditor.error} />}
+                {sourceEditor.kind === "audio" ? (
+                    <AudioFileSourceEditor
+                        source={selectedSource}
+                        originalSource={originalSource}
+                        onChange={onSelectedSourceChange}
+                        validation={inputValidationSource}
+                        setValidation={setInputValidationSource}
+                        onOpenFileSelectModal={onOpenFileSelectModal}
+                        modelAudioPath={modelAudioPath}
+                        modelAudioHasMapping={modelAudioHasMapping}
+                        selectedModel={selectedModel}
+                        audioInfoTooltip={audioInfoTooltip}
+                    />
                 ) : (
-                    <Form.Item
-                        validateStatus={inputValidationModel.validateStatus}
-                        help={inputValidationModel.help}
-                    >
-                        <Input
-                            value={selectedModel}
-                            onChange={(e) => onSelectedModelChange(e.target.value)}
-                            prefix={
-                                <>
-                                    <CloseOutlined
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={handleClearModel}
-                                        style={{ cursor: "pointer" }}
-                                    />
-                                    <Divider orientation="vertical" style={{ marginLeft: 2 }} />
-                                    <RollbackOutlined
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={handleRollbackModel}
-                                        style={{
-                                            color: isModelUnchanged
-                                                ? token.colorTextDisabled
-                                                : token.colorText,
-                                            cursor: isModelUnchanged ? "default" : "pointer",
-                                        }}
-                                    />
-                                    <Divider orientation="vertical" style={{ marginLeft: 2 }} />
-                                </>
-                            }
-                            suffix={
-                                <>
-                                    {modelInfoTooltip ? (
-                                        <>
-                                            <Tooltip
-                                                trigger={["hover", "click"]}
-                                                title={modelInfoTooltip}
-                                            >
-                                                <InfoCircleOutlined
-                                                    onMouseDown={(e) => e.preventDefault()}
-                                                />
-                                            </Tooltip>
-                                            <Divider
-                                                orientation="vertical"
-                                                style={{ marginLeft: 2 }}
-                                            />
-                                        </>
-                                    ) : null}
-                                    {selectedModel && onEditModel && isSelectedModelCustom ? (
-                                        <>
-                                            <EditOutlined
+                    sourceEditor.editor
+                )}
+
+                <Divider orientation="horizontal" titlePlacement="left">
+                    {t("tonies.editModal.model")}
+                </Divider>
+                <div>
+                    {modelReadOnly ? (
+                        <Form.Item>
+                            <Input
+                                value={modelDisplayText || selectedModel || originalModel}
+                                readOnly
+                                disabled
+                                style={{ color: token.colorText, cursor: "default" }}
+                                suffix={
+                                    modelInfoTooltip ? (
+                                        <Tooltip
+                                            trigger={["hover", "click"]}
+                                            title={modelInfoTooltip}
+                                        >
+                                            <InfoCircleOutlined
                                                 onMouseDown={(e) => e.preventDefault()}
-                                                onClick={onEditModel}
-                                                style={{ cursor: "pointer" }}
                                             />
-                                            {onCreateNewModel ? (
+                                        </Tooltip>
+                                    ) : null
+                                }
+                            />
+                            <Text
+                                type="secondary"
+                                style={{ fontSize: 12, display: "block", marginTop: 4 }}
+                            >
+                                {t("tonies.editModal.modelReadOnlyHint")}
+                            </Text>
+                        </Form.Item>
+                    ) : (
+                        <Form.Item
+                            validateStatus={inputValidationModel.validateStatus}
+                            help={inputValidationModel.help}
+                        >
+                            <Input
+                                value={selectedModel}
+                                onChange={(e) => onSelectedModelChange(e.target.value)}
+                                prefix={
+                                    <>
+                                        <CloseOutlined
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={handleClearModel}
+                                            style={{ cursor: "pointer" }}
+                                        />
+                                        <Divider orientation="vertical" style={{ marginLeft: 2 }} />
+                                        <RollbackOutlined
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={handleRollbackModel}
+                                            style={{
+                                                color: isModelUnchanged
+                                                    ? token.colorTextDisabled
+                                                    : token.colorText,
+                                                cursor: isModelUnchanged ? "default" : "pointer",
+                                            }}
+                                        />
+                                        <Divider orientation="vertical" style={{ marginLeft: 2 }} />
+                                    </>
+                                }
+                                suffix={
+                                    <>
+                                        {modelInfoTooltip ? (
+                                            <>
+                                                <Tooltip
+                                                    trigger={["hover", "click"]}
+                                                    title={modelInfoTooltip}
+                                                >
+                                                    <InfoCircleOutlined
+                                                        onMouseDown={(e) => e.preventDefault()}
+                                                    />
+                                                </Tooltip>
                                                 <Divider
                                                     orientation="vertical"
                                                     style={{ marginLeft: 2 }}
                                                 />
-                                            ) : null}
-                                        </>
-                                    ) : null}
-                                    {onCreateNewModel ? (
-                                        <PlusOutlined
-                                            onMouseDown={(e) => e.preventDefault()}
-                                            onClick={onCreateNewModel}
-                                            style={{ cursor: "pointer" }}
-                                        />
-                                    ) : null}
-                                </>
-                            }
-                        />
-                        <ToniesJsonSearch
-                            placeholder={t("tonies.editModal.placeholderSearchForAModel")}
-                            clearInputAfterSelection={true}
-                            onChange={onSearchModelChange}
-                            onSelectResult={(result) => {
-                                onModelSelectResult?.({
-                                    value: result.value,
-                                    selectionText: result.selectionText,
-                                });
-                            }}
-                            key={keyTonieArticleSearch}
-                            showAddCustomTonieButton={false}
-                        />
-                        {showSetModelFromAudioAction ? (
-                            <Form.Item style={{ marginTop: 8, marginBottom: 0 }}>
-                                <Button
-                                    type="default"
-                                    icon={<SwapOutlined />}
-                                    onClick={() => {
-                                        onSetModelFromAudio?.();
-                                        setInputValidationModel({ validateStatus: "", help: "" });
-                                    }}
-                                >
-                                    {t("tonies.editModal.setModelFromAudio")}
-                                </Button>
-                            </Form.Item>
-                        ) : null}
-                    </Form.Item>
-                )}
-            </div>
+                                            </>
+                                        ) : null}
+                                        {selectedModel && onEditModel && isSelectedModelCustom ? (
+                                            <>
+                                                <EditOutlined
+                                                    onMouseDown={(e) => e.preventDefault()}
+                                                    onClick={onEditModel}
+                                                    style={{ cursor: "pointer" }}
+                                                />
+                                                {onCreateNewModel ? (
+                                                    <Divider
+                                                        orientation="vertical"
+                                                        style={{ marginLeft: 2 }}
+                                                    />
+                                                ) : null}
+                                            </>
+                                        ) : null}
+                                        {onCreateNewModel ? (
+                                            <PlusOutlined
+                                                onMouseDown={(e) => e.preventDefault()}
+                                                onClick={onCreateNewModel}
+                                                style={{ cursor: "pointer" }}
+                                            />
+                                        ) : null}
+                                    </>
+                                }
+                            />
+                            <ToniesJsonSearch
+                                placeholder={t("tonies.editModal.placeholderSearchForAModel")}
+                                clearInputAfterSelection={true}
+                                onChange={onSearchModelChange}
+                                onSelectResult={(result) => {
+                                    onModelSelectResult?.({
+                                        value: result.value,
+                                        selectionText: result.selectionText,
+                                    });
+                                }}
+                                key={keyTonieArticleSearch}
+                                showAddCustomTonieButton={false}
+                            />
+                            {showSetModelFromAudioAction ? (
+                                <Form.Item style={{ marginTop: 8, marginBottom: 0 }}>
+                                    <Button
+                                        type="default"
+                                        icon={<SwapOutlined />}
+                                        onClick={() => {
+                                            onSetModelFromAudio?.();
+                                            setInputValidationModel({
+                                                validateStatus: "",
+                                                help: "",
+                                            });
+                                        }}
+                                    >
+                                        {t("tonies.editModal.setModelFromAudio")}
+                                    </Button>
+                                </Form.Item>
+                            ) : null}
+                        </Form.Item>
+                    )}
+                </div>
+            </fieldset>
         </Modal>
     );
 };

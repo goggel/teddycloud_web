@@ -21,6 +21,7 @@ import { usePodcastSubscription } from "./usePodcastSubscription";
 import { usePodcastFeedFilter } from "./usePodcastFeedFilter";
 import {
     configForCapabilities,
+    rssSourceKey,
     effectiveTrim,
     sourceToken,
     validPodcastConfig,
@@ -31,10 +32,12 @@ export const PodcastSubscriptionEditor = ({
     state,
     disabled,
     onDetached,
+    kind,
 }: {
     state: PodcastEditorState;
     disabled: boolean;
     onDetached: () => Promise<void>;
+    kind?: "podcast" | "ard";
 }) => {
     const { t } = useTranslation();
     const [query, setQuery] = useState("");
@@ -45,7 +48,10 @@ export const PodcastSubscriptionEditor = ({
     const [previewing, setPreviewing] = useState(false);
     const [previewError, setPreviewError] = useState("");
     const { draft, setDraft, subscription } = state;
-    const provider = draft.sourceType === "ard_audiothek" ? "ard_audiothek" : "apple";
+    const provider =
+        kind === "ard" || (!kind && draft.sourceType === "ard_audiothek")
+            ? "ard_audiothek"
+            : "apple";
     const locked = disabled || state.busy || state.loading;
     const filtered = usePodcastFeedFilter(
         api,
@@ -58,7 +64,7 @@ export const PodcastSubscriptionEditor = ({
         const url = draft.feedUrl;
         setDraft((current) =>
             current.sourceType === "rss" && current.feedUrl === url
-                ? { ...current, feedUrl: "" }
+                ? { ...current, feedUrl: "", displayName: "", displayNameSourceKey: "" }
                 : current,
         );
         setQuery("");
@@ -128,6 +134,28 @@ export const PodcastSubscriptionEditor = ({
                         token: sourceToken(draft),
                         key: result.sourceKey || "",
                     });
+                    if (result.sourceKey) {
+                        setDraft((current) =>
+                            sourceToken(current) === sourceToken(draft)
+                                ? { ...current, sourceKey: result.sourceKey }
+                                : current,
+                        );
+                    }
+                    if (result.title) {
+                        setDraft((current) =>
+                            sourceToken(current) === sourceToken(draft)
+                                ? {
+                                      ...current,
+                                      displayName: result.title,
+                                      displayNameSourceKey:
+                                          result.sourceKey ||
+                                          (provider === "apple"
+                                              ? rssSourceKey(current.feedUrl)
+                                              : current.ardShowUrl),
+                                  }
+                                : current,
+                        );
+                    }
                 }
             })
             .catch((cause) => {
@@ -141,25 +169,10 @@ export const PodcastSubscriptionEditor = ({
     return (
         <Space orientation="vertical" style={{ width: "100%" }}>
             <Alert type="info" title={t("podcasts.explanation")} />
-            <Form.Item label={t("podcasts.sourceType")}>
-                <Select
-                    aria-label={t("podcasts.sourceType")}
-                    value={draft.sourceType}
-                    disabled={locked}
-                    options={[
-                        { value: "rss", label: t("podcasts.rss") },
-                        ...(state.capabilities.sourceTypes?.includes("ard_audiothek")
-                            ? [{ value: "ard_audiothek", label: t("podcasts.ard") }]
-                            : []),
-                    ]}
-                    onChange={(sourceType) => {
-                        setVideoRemoved(false);
-                        setDraft({ ...draft, sourceType });
-                        setQuery("");
-                        setResults([]);
-                    }}
-                />
-            </Form.Item>
+            <Typography.Text strong>
+                {draft.displayName ||
+                    (provider === "ard_audiothek" ? draft.ardShowUrl : draft.feedUrl)}
+            </Typography.Text>
             <Form.Item label={t("podcasts.search")}>
                 <AutoComplete
                     aria-label={t("podcasts.search")}
@@ -174,15 +187,34 @@ export const PodcastSubscriptionEditor = ({
                     }))}
                     onSelect={(url) => {
                         setVideoRemoved(false);
+                        const item = results.find((result) =>
+                            result.sourceType === "ard_audiothek"
+                                ? result.ardShowUrl === url
+                                : result.feedUrl === url,
+                        );
                         const next =
                             provider === "ard_audiothek"
-                                ? { ...draft, ardShowUrl: url }
-                                : { ...draft, feedUrl: url };
+                                ? {
+                                      ...draft,
+                                      ardShowUrl: url,
+                                      sourceKey:
+                                          item?.sourceType === "ard_audiothek"
+                                              ? item.sourceKey || ""
+                                              : "",
+                                      displayName: item?.title || "",
+                                      displayNameSourceKey:
+                                          item?.sourceType === "ard_audiothek"
+                                              ? item.sourceKey || url
+                                              : "",
+                                  }
+                                : {
+                                      ...draft,
+                                      feedUrl: url,
+                                      sourceKey: rssSourceKey(url),
+                                      displayName: item?.title || "",
+                                      displayNameSourceKey: rssSourceKey(url),
+                                  };
                         setDraft(next);
-                        const item = results.find(
-                            (item) =>
-                                item.sourceType === "ard_audiothek" && item.ardShowUrl === url,
-                        );
                         if (item?.sourceType === "ard_audiothek" && item.sourceKey)
                             state.setResolvedSource({
                                 token: sourceToken(next),
@@ -208,11 +240,27 @@ export const PodcastSubscriptionEditor = ({
                     maxLength={2048}
                     onChange={(e) => {
                         setVideoRemoved(false);
-                        setDraft(
-                            provider === "ard_audiothek"
-                                ? { ...draft, ardShowUrl: e.target.value }
-                                : { ...draft, feedUrl: e.target.value },
-                        );
+                        const nextUrl = e.target.value;
+                        setDraft((current) => {
+                            const priorUrl =
+                                provider === "ard_audiothek" ? current.ardShowUrl : current.feedUrl;
+                            if (nextUrl === priorUrl) return current;
+                            return provider === "ard_audiothek"
+                                ? {
+                                      ...current,
+                                      ardShowUrl: nextUrl,
+                                      sourceKey: "",
+                                      displayName: "",
+                                      displayNameSourceKey: "",
+                                  }
+                                : {
+                                      ...current,
+                                      feedUrl: nextUrl,
+                                      sourceKey: "",
+                                      displayName: "",
+                                      displayNameSourceKey: "",
+                                  };
+                        });
                     }}
                     placeholder={
                         provider === "ard_audiothek"
@@ -519,9 +567,11 @@ export const PodcastSubscriptionEditor = ({
             )}
             {subscription && (
                 <>
-                    <Typography.Text strong>
-                        {subscription.title || t("podcasts.title")}
-                    </Typography.Text>
+                    {subscription.title && subscription.title !== draft.displayName && (
+                        <Typography.Text type="secondary">
+                            {t("sources.preparedTitle")}: {subscription.title}
+                        </Typography.Text>
+                    )}
                     <Typography.Text>
                         {t("podcasts.status")}:{" "}
                         {t(`podcasts.states.${subscription.state}`, {

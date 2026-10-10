@@ -3,7 +3,9 @@ import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SourceProfilesResponse } from "../../../../types/audioSourceTypes";
+import { PodcastSubscription } from "../../../../types/podcastTypes";
 import { useAudioSourceEditor } from "./useAudioSourceEditor";
+import { SourceAssignment } from "./sourceProfiles";
 
 let root: Root;
 let host: HTMLDivElement;
@@ -20,13 +22,23 @@ const response: SourceProfilesResponse = {
         ard: { ardShowUrl: "https://www.ardsounds.de/sendung/x/123/", episodeCount: 3 },
     },
 };
-function Probe({ open, polled = 0 }: { open: boolean; polled?: number }) {
-    current = useAudioSourceEditor(open, ruid, "", { source, subscription: undefined }, load);
+function Probe({
+    open,
+    polled = 0,
+    assignment = { source },
+}: {
+    open: boolean;
+    polled?: number;
+    assignment?: SourceAssignment;
+}) {
+    current = useAudioSourceEditor(open, ruid, "", assignment, load);
     void polled;
     return null;
 }
-const render = async (open: boolean, polled = 0) => {
-    await act(async () => root.render(<Probe open={open} polled={polled} />));
+const render = async (open: boolean, polled = 0, assignment?: SourceAssignment) => {
+    await act(async () =>
+        root.render(<Probe open={open} polled={polled} assignment={assignment} />),
+    );
 };
 beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -98,6 +110,66 @@ describe("four source drafts", () => {
         expect(current.drafts.ard.episodeCount).toBe(10);
     });
 
+    it("uses confirmed edits to the active audio profile as the new baseline", async () => {
+        await render(true);
+        await act(async () => current.updateProfile("audio", { source: "lib://next.taf" }));
+        expect(current.dirtyKinds).toEqual(["audio"]);
+        await act(async () =>
+            current.recordSaved("audio", {
+                revision: 5,
+                profiles: { ...response.profiles, audio: { source: "lib://next.taf" } },
+            }),
+        );
+        expect(current.dirtyKinds).toEqual([]);
+    });
+
+    it("keeps the draft dirty if the server confirms a different active value", async () => {
+        await render(true);
+        await act(async () => current.updateProfile("audio", { source: "lib://draft.taf" }));
+        await act(async () =>
+            current.recordSaved("audio", {
+                revision: 5,
+                profiles: { ...response.profiles, audio: { source: "lib://canonical.taf" } },
+            }),
+        );
+        expect(current.drafts.audio.source).toBe("lib://draft.taf");
+        expect(current.dirtyKinds).toEqual(["audio"]);
+        await act(async () => current.cancel());
+        expect(current.drafts.audio.source).toBe("lib://canonical.taf");
+    });
+
+    it("uses confirmed edits to an owning podcast profile as the new baseline", async () => {
+        const subscription: PodcastSubscription = {
+            id: "1",
+            revision: 2,
+            ruid,
+            overlay: "",
+            state: "ready",
+            episodes: [],
+            ownsAssignment: true,
+            sourceType: "rss",
+            feedUrl: "https://example.org/feed",
+            episodeCount: 7,
+            order: "newest_first",
+            intervalHours: 0,
+            refreshOnPlacement: true,
+            enabled: true,
+        };
+        await render(true, 0, { source: "lib://prepared.taf", subscription });
+        expect(current.selectedKind).toBe("podcast");
+        await act(async () =>
+            current.updateProfile("podcast", { ...current.drafts.podcast, episodeCount: 8 }),
+        );
+        const confirmed = { ...current.drafts.podcast };
+        await act(async () =>
+            current.recordSaved("podcast", {
+                revision: 5,
+                profiles: { ...response.profiles, podcast: confirmed },
+            }),
+        );
+        expect(current.dirtyKinds).toEqual([]);
+    });
+
     it("does not replace edits or selection when the initial profile GET finishes late", async () => {
         let finish!: (value: SourceProfilesResponse) => void;
         load.mockImplementation(
@@ -116,5 +188,89 @@ describe("four source drafts", () => {
         expect(current.drafts.podcast.episodeCount).toBe(7);
         expect(current.selectedKind).toBe("radio");
         expect(current.revision).toBe(4);
+    });
+
+    it("initializes after the owning subscription arrives instead of freezing an audio guess", async () => {
+        await render(false);
+        const subscription: PodcastSubscription = {
+            id: "1",
+            revision: 1,
+            ruid,
+            overlay: "",
+            state: "ready",
+            episodes: [],
+            ownsAssignment: true,
+            sourceType: "ard_audiothek",
+            feedUrl: "",
+            ardShowUrl: "https://www.ardsounds.de/sendung/x/123/",
+            episodeCount: 2,
+            order: "newest_first",
+            intervalHours: 0,
+            refreshOnPlacement: true,
+            enabled: true,
+        };
+        await render(true, 0, { source: "lib://prepared.taf", subscription });
+        expect(current.selectedKind).toBe("ard");
+        expect(current.drafts.ard.ardShowUrl).toBe(subscription.ardShowUrl);
+    });
+
+    it("composes canonical preview key and selected name without losing cuts", async () => {
+        await render(true);
+        await act(async () => {
+            current.updateProfile("ard", (draft) => ({
+                ...draft,
+                episodeTrims: [{ identity: "episode-1", trimStartSeconds: 4, trimEndSeconds: 0 }],
+            }));
+            current.updateProfile("ard", (draft) => ({ ...draft, sourceKey: "ard:canonical" }));
+            current.updateProfile("ard", (draft) => ({
+                ...draft,
+                displayName: "Sendung",
+                displayNameSourceKey: "ard:canonical",
+            }));
+        });
+        expect(current.drafts.ard.sourceKey).toBe("ard:canonical");
+        expect(current.drafts.ard.displayName).toBe("Sendung");
+        expect(current.drafts.ard.episodeTrims[0].trimStartSeconds).toBe(4);
+    });
+    it("reopens with the departing legacy audio profile after choosing a podcast", async () => {
+        load.mockResolvedValueOnce({ revision: 0, profiles: {} });
+        await render(true, 0, { source: "lib://legacy-a.taf" });
+        expect(current.missingKinds).toContain("audio");
+        await act(async () => current.setSelectedKind("podcast"));
+        const persisted: SourceProfilesResponse = {
+            revision: 2,
+            profiles: {
+                audio: { source: "lib://legacy-a.taf" },
+                podcast: { feedUrl: "https://example.org/feed" },
+            },
+        };
+        await act(async () =>
+            current.recordSaved("audio", {
+                revision: 1,
+                profiles: { audio: persisted.profiles.audio },
+            }),
+        );
+        await act(async () => current.recordSaved("podcast", persisted));
+        await render(false);
+        load.mockResolvedValueOnce(persisted);
+        const subscription: PodcastSubscription = {
+            id: "a".repeat(32),
+            revision: 1,
+            ruid,
+            overlay: "",
+            state: "ready",
+            episodes: [],
+            ownsAssignment: true,
+            sourceType: "rss",
+            feedUrl: "https://example.org/feed",
+            episodeCount: 5,
+            order: "newest_first",
+            intervalHours: 6,
+            refreshOnPlacement: true,
+            enabled: true,
+        };
+        await render(true, 0, { source: "lib://podcasts/prepared.taf", subscription });
+        expect(current.selectedKind).toBe("podcast");
+        expect(current.drafts.audio.source).toBe("lib://legacy-a.taf");
     });
 });

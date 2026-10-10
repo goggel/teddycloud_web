@@ -13,7 +13,8 @@ const { Paragraph } = Typography;
 export const RadioStreamSearch: React.FC<{
     placeholder: string;
     onChange: (newValue: string) => void;
-}> = ({ placeholder, onChange }) => {
+    onSelectResult?: (result: { value: string; name: string }) => void;
+}> = ({ placeholder, onChange, onSelectResult }) => {
     const { t } = useTranslation();
     const { addNotification } = useTeddyCloud();
 
@@ -51,6 +52,7 @@ export const RadioStreamSearch: React.FC<{
         const match = options.find((o) => o.value === newValue);
         if (match) {
             setSearchText(match.text);
+            onSelectResult?.({ value: newValue, name: match.text });
         }
     };
 

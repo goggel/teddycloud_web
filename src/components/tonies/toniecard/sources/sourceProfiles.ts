@@ -12,14 +12,27 @@ export interface SourceAssignment {
     subscription?: PodcastSubscription;
 }
 
+export const ownsSourceAssignment = (assignment: SourceAssignment): boolean => {
+    const subscription = assignment.subscription;
+    if (!subscription) return false;
+    if (typeof subscription.ownsAssignment === "boolean") return subscription.ownsAssignment;
+    // Older servers do not report ownership. An exact generated path is enough
+    // for an already prepared subscription; other assignments remain ambiguous.
+    return Boolean(
+        subscription.audioId &&
+        assignment.source ===
+            `lib://podcasts/${subscription.id}/${subscription.audioId.toString(16).padStart(8, "0")}.taf`,
+    );
+};
+
 // A subscription can be paused or can have lost its assignment to a manual edit.
 // Its mere presence is not evidence that it controls the Tonie.
 export const activeSourceKind = (
     assignment: SourceAssignment,
     profiles: StoredAudioSourceProfiles = {},
 ): AudioSourceKind => {
-    if (assignment.subscription?.ownsAssignment) {
-        return assignment.subscription.sourceType === "ard_audiothek" ? "ard" : "podcast";
+    if (ownsSourceAssignment(assignment)) {
+        return assignment.subscription?.sourceType === "ard_audiothek" ? "ard" : "podcast";
     }
     // Legacy HTTP audio, TAPs, and live flags alone do not identify a radio.
     if (
@@ -42,9 +55,7 @@ export const completeSourceProfiles = (
     stored: StoredAudioSourceProfiles = {},
 ): AudioSourceProfiles => {
     const kind = activeSourceKind(assignment, stored);
-    const subscription = assignment.subscription?.ownsAssignment
-        ? assignment.subscription
-        : undefined;
+    const subscription = ownsSourceAssignment(assignment) ? assignment.subscription : undefined;
     const podcast =
         subscription?.sourceType !== "ard_audiothek" && subscription
             ? podcastConfig(subscription)

@@ -13,6 +13,9 @@ import {
 } from "./sourceProfiles";
 
 export type SourceProfilesLoader = (signal: AbortSignal) => Promise<SourceProfilesResponse>;
+const kinds: AudioSourceKind[] = ["audio", "radio", "podcast", "ard"];
+const missingFrom = (response: SourceProfilesResponse) =>
+    kinds.filter((kind) => !Object.prototype.hasOwnProperty.call(response.profiles, kind));
 
 export const useAudioSourceEditor = (
     open: boolean,
@@ -29,6 +32,7 @@ export const useAudioSourceEditor = (
         completeSourceProfiles(assignment),
     );
     const [revision, setRevision] = useState(0);
+    const [missingKinds, setMissingKinds] = useState<AudioSourceKind[]>(kinds);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const baseline = useRef(cloneSourceProfiles(drafts));
@@ -50,6 +54,7 @@ export const useAudioSourceEditor = (
         setDrafts(empty);
         setSelectedKind(baselineKind.current);
         setRevision(0);
+        setMissingKinds(kinds);
         setError("");
         if (loadProfiles) {
             setLoading(true);
@@ -69,6 +74,7 @@ export const useAudioSourceEditor = (
                     });
                     if (!selectionTouched.current) setSelectedKind(loaded.kind);
                     setRevision(loaded.revision);
+                    setMissingKinds(missingFrom(response));
                 })
                 .catch((cause: unknown) => {
                     if (!controller.signal.aborted && generation.current === session) {
@@ -90,9 +96,21 @@ export const useAudioSourceEditor = (
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, ruid, overlay]);
 
-    const updateProfile = <K extends AudioSourceKind>(kind: K, value: AudioSourceProfiles[K]) => {
+    const updateProfile = <K extends AudioSourceKind>(
+        kind: K,
+        value:
+            AudioSourceProfiles[K] | ((previous: AudioSourceProfiles[K]) => AudioSourceProfiles[K]),
+    ) => {
         touchedKinds.current.add(kind);
-        setDrafts((current) => ({ ...current, [kind]: value }));
+        setDrafts((current) => ({
+            ...current,
+            [kind]:
+                typeof value === "function"
+                    ? (value as (previous: AudioSourceProfiles[K]) => AudioSourceProfiles[K])(
+                          current[kind],
+                      )
+                    : value,
+        }));
     };
     const selectKind = (kind: AudioSourceKind) => {
         selectionTouched.current = true;
@@ -105,10 +123,26 @@ export const useAudioSourceEditor = (
         setSelectedKind(baselineKind.current);
         setError("");
     };
+    const recordActivation = (kind: AudioSourceKind) => {
+        baselineKind.current = kind;
+    };
+    const reconcile = (response: SourceProfilesResponse, assignment: SourceAssignment) => {
+        const loaded = sourceProfilesFromResponse(assignment, response);
+        baseline.current = cloneSourceProfiles(loaded.profiles);
+        baselineKind.current = loaded.kind;
+        setRevision(loaded.revision);
+        setMissingKinds(missingFrom(response));
+    };
     const recordSaved = (kind: AudioSourceKind, response: SourceProfilesResponse) => {
-        const confirmed = completeSourceProfiles(initial.current, response.profiles);
-        baseline.current = { ...baseline.current, [kind]: confirmed[kind] };
+        // The assignment captured on open can still point at the previous source.
+        // The server-confirmed profile is the new edit baseline, even before the
+        // separate activation operation updates the actual assignment.
+        const normalized = completeSourceProfiles({ source: "" }, response.profiles);
+        const confirmed =
+            kind === "audio" ? { source: response.profiles.audio?.source ?? "" } : normalized[kind];
+        baseline.current = { ...baseline.current, [kind]: confirmed };
         setRevision(response.revision);
+        setMissingKinds(missingFrom(response));
     };
     const dirtyKinds = (Object.keys(drafts) as AudioSourceKind[]).filter(
         (kind) => JSON.stringify(drafts[kind]) !== JSON.stringify(baseline.current[kind]),
@@ -117,13 +151,18 @@ export const useAudioSourceEditor = (
         selectedKind,
         setSelectedKind: selectKind,
         drafts,
+        originalProfiles: baseline.current,
         updateProfile,
         revision,
         loading,
         error,
         dirtyKinds,
+        missingKinds,
         selectionChanged: selectedKind !== baselineKind.current,
         cancel,
         recordSaved,
+        recordActivation,
+        reconcile,
+        originalKind: baselineKind.current,
     };
 };

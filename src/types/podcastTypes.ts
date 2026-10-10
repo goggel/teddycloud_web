@@ -5,6 +5,7 @@ export interface PodcastEpisodeTrim {
     trimEndSeconds: number;
 }
 export interface PodcastConfig {
+    sourceKey?: string;
     displayName?: string;
     displayNameSourceKey?: string;
     sourceType?: PodcastSourceType;

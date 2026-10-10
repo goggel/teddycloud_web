@@ -32,6 +32,27 @@ describe("source profile detection", () => {
         ).toBe("audio");
     });
 
+    it("recognizes only an exact prepared path on older podcast servers", () => {
+        const old = {
+            ...subscription("rss", true),
+            ownsAssignment: undefined,
+            id: "a".repeat(32),
+            audioId: 31,
+        };
+        expect(
+            activeSourceKind({
+                source: `lib://podcasts/${old.id}/0000001f.taf`,
+                subscription: old,
+            }),
+        ).toBe("podcast");
+        expect(activeSourceKind({ source: "lib://unrelated.taf", subscription: old })).toBe(
+            "audio",
+        );
+        expect(activeSourceKind({ source: "", subscription: { ...old, audioId: undefined } })).toBe(
+            "audio",
+        );
+    });
+
     it("leaves ambiguous legacy HTTP and TAP sources in the path editor", () => {
         for (const source of ["https://example.org/live", "file.tap", "lib://record.taf"]) {
             expect(activeSourceKind({ source })).toBe("audio");

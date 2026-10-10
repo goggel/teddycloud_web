@@ -8,6 +8,7 @@ export const defaultPodcastConfig = (): PodcastDraft => ({
     displayName: "",
     displayNameSourceKey: "",
     sourceType: "rss",
+    sourceKey: "",
     feedUrl: "",
     ardShowUrl: "",
     trimStartSeconds: 0,
@@ -24,6 +25,7 @@ export const podcastConfig = (value: PodcastConfig): PodcastDraft => ({
     displayName: value.displayName ?? "",
     displayNameSourceKey: value.displayNameSourceKey ?? "",
     sourceType: value.sourceType ?? "rss",
+    sourceKey: value.sourceKey ?? "",
     feedUrl: value.feedUrl,
     ardShowUrl: value.ardShowUrl ?? "",
     trimStartSeconds: value.trimStartSeconds ?? 0,
@@ -46,6 +48,7 @@ export const configForCapabilities = (
     if (!capabilities.sourceTypes) {
         delete config.sourceType;
         delete config.ardShowUrl;
+        delete config.sourceKey;
     }
     if (!capabilities.trimSupported) {
         delete config.trimStartSeconds;

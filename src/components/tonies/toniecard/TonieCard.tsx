@@ -1,5 +1,11 @@
 import { usePodcastSubscription } from "./podcasts/usePodcastSubscription";
 import { PodcastSubscriptionEditor } from "./podcasts/PodcastSubscriptionEditor";
+import { useAudioSourceEditor } from "./sources/useAudioSourceEditor";
+import { RadioSourceEditor } from "./sources/RadioSourceEditor";
+import { validDirectSource } from "./sources/saveAudioSource";
+import { rssSourceKey, sourceToken, validPodcastConfig } from "./podcasts/podcastValidation";
+import { AudioSourceKind } from "../../../types/audioSourceTypes";
+import { PodcastDraft } from "../../../types/podcastTypes";
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, Checkbox, Tooltip, Typography, theme } from "antd";
@@ -91,6 +97,20 @@ export const TonieCard: React.FC<{
     const [isInformationModalOpen, setInformationModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const podcast = usePodcastSubscription(isEditModalOpen, tonieCard.ruid, overlay);
+    const [profilesSupported, setProfilesSupported] = useState(false);
+    const sourceEditor = useAudioSourceEditor(
+        isEditModalOpen && podcast.initialized,
+        tonieCard.ruid,
+        overlay,
+        { source: tonieCard.source || "", subscription: podcast.subscription },
+        async (signal) => {
+            const capabilities = await api.sourceProfilesCapabilities(signal);
+            setProfilesSupported(capabilities.supported);
+            return capabilities.supported
+                ? api.sourceProfiles(tonieCard.ruid, overlay, signal)
+                : { revision: 0, profiles: {} };
+        },
+    );
     const [isSelectFileModalOpen, setSelectFileModalOpen] = useState(false);
     const [selectedModelDisplayText, setSelectedModelDisplayText] = useState<string>("");
 
@@ -106,6 +126,7 @@ export const TonieCard: React.FC<{
     const isSelectedModelCustom = customModelKeys.has(toModelKey(selectedModel));
 
     useEffect(() => {
+        if (isEditModalOpen) return;
         const model = tonieCard.tonieInfo.model || "";
         setSelectedModel(model);
         if (model && tonieCard.tonieInfo.series) {
@@ -116,12 +137,36 @@ export const TonieCard: React.FC<{
         } else {
             setSelectedModelDisplayText("");
         }
-    }, [tonieCard.tonieInfo.model, tonieCard.tonieInfo.series, tonieCard.tonieInfo.episode]);
+    }, [
+        tonieCard.tonieInfo.model,
+        tonieCard.tonieInfo.series,
+        tonieCard.tonieInfo.episode,
+        isEditModalOpen,
+    ]);
 
     useEffect(() => {
+        if (isEditModalOpen) return;
         setSelectedSource(tonieCard.source || "");
         setTempSelectedSource(tonieCard.source || "");
-    }, [tonieCard.source]);
+    }, [tonieCard.source, isEditModalOpen]);
+
+    useEffect(() => {
+        if (!isEditModalOpen) return;
+        const source =
+            sourceEditor.selectedKind === "audio"
+                ? sourceEditor.drafts.audio.source
+                : sourceEditor.selectedKind === "radio"
+                  ? sourceEditor.drafts.radio.source
+                  : tonieCard.source || "";
+        setSelectedSource(source);
+        setTempSelectedSource(source);
+    }, [
+        isEditModalOpen,
+        sourceEditor.selectedKind,
+        sourceEditor.drafts.audio.source,
+        sourceEditor.drafts.radio.source,
+        tonieCard.source,
+    ]);
 
     const [inputValidationModel, setInputValidationModel] = useState<{
         validateStatus: ValidateStatus;
@@ -171,10 +216,66 @@ export const TonieCard: React.FC<{
             : "/img_unknown.png";
     const pictureLooksUnknown = picture.endsWith("img_unknown.png");
 
+    const selectedKind = sourceEditor.selectedKind;
+    const selectedPodcastDraft =
+        selectedKind === "ard" ? sourceEditor.drafts.ard : sourceEditor.drafts.podcast;
+    const selectedPodcastSourceKey =
+        selectedKind === "ard"
+            ? selectedPodcastDraft.sourceKey ||
+              (podcast.resolvedSource.token === sourceToken(selectedPodcastDraft)
+                  ? podcast.resolvedSource.key
+                  : "")
+            : rssSourceKey(selectedPodcastDraft.feedUrl);
+    const selectedPodcastSourceMismatch =
+        selectedPodcastDraft.episodeTrims.length > 0 &&
+        (!selectedPodcastSourceKey ||
+            selectedPodcastDraft.episodeTrimSourceKey !== selectedPodcastSourceKey);
+    const podcastValid = validPodcastConfig(selectedPodcastDraft) && !selectedPodcastSourceMismatch;
+    const selectedSourceValid =
+        (selectedKind === "audio" &&
+            validDirectSource("audio", sourceEditor.drafts.audio.source)) ||
+        (selectedKind === "radio" &&
+            validDirectSource("radio", sourceEditor.drafts.radio.source)) ||
+        ((selectedKind === "podcast" || selectedKind === "ard") &&
+            podcast.supported &&
+            podcastValid &&
+            (selectedKind === "podcast" ||
+                podcast.capabilities.sourceTypes?.includes("ard_audiothek")));
     const hasPendingChanges =
-        podcast.dirty ||
-        selectedSource !== (tonieCard.source || "") ||
+        sourceEditor.dirtyKinds.length > 0 ||
+        sourceEditor.selectionChanged ||
         selectedModel !== (tonieCard.tonieInfo.model || "");
+
+    const setSelectedPodcastDraft: React.Dispatch<React.SetStateAction<PodcastDraft>> = (
+        update,
+    ) => {
+        const kind = sourceEditor.selectedKind;
+        if (kind !== "podcast" && kind !== "ard") return;
+        if (kind === "podcast")
+            sourceEditor.updateProfile("podcast", (current) => ({
+                ...(typeof update === "function" ? update(current) : update),
+                sourceType: "rss",
+            }));
+        else
+            sourceEditor.updateProfile("ard", (current) => ({
+                ...(typeof update === "function" ? update(current) : update),
+                sourceType: "ard_audiothek",
+            }));
+    };
+    const podcastEditorState = {
+        ...podcast,
+        draft: selectedPodcastDraft,
+        setDraft: setSelectedPodcastDraft,
+        sourceKey: selectedPodcastSourceKey,
+        sourceMismatch: selectedPodcastSourceMismatch,
+        valid: podcastValid,
+        dirty: sourceEditor.dirtyKinds.includes(selectedKind),
+        subscription:
+            podcast.subscription?.ownsAssignment &&
+            (selectedKind === "ard") === (podcast.subscription.sourceType === "ard_audiothek")
+                ? podcast.subscription
+                : undefined,
+    };
 
     // ------------------------
     // API helper
@@ -184,6 +285,7 @@ export const TonieCard: React.FC<{
         try {
             const updatedTonieCard = await api.apiGetTagInfo(tonieCard.ruid, overlay);
             onUpdate(updatedTonieCard);
+            return updatedTonieCard;
         } catch (error) {
             addNotification(
                 NotificationTypeEnum.Error,
@@ -219,7 +321,9 @@ export const TonieCard: React.FC<{
         addNotification,
         addLoadingNotification,
         closeLoadingNotification,
-        fetchUpdatedTonieCard,
+        fetchUpdatedTonieCard: async () => {
+            await fetchUpdatedTonieCard();
+        },
     });
 
     // ------------------------
@@ -234,17 +338,17 @@ export const TonieCard: React.FC<{
         );
     };
 
-    const { handleSaveChanges } = useTonieCardSaveFlow({
-        podcast: {
-            dirty: podcast.dirty,
-            save: podcast.save,
-            skipSourceSave: podcast.mode === "podcast" && podcast.supported,
-        },
+    const {
+        handleSaveChanges,
+        busy: saveBusy,
+        error: saveError,
+    } = useTonieCardSaveFlow({
+        sourceEditor,
+        profilesSupported,
+        podcast,
         tonieCard,
         overlay,
-        modelTitle,
         selectedModel,
-        selectedSource,
         resolvedAudioModel,
         modelAudioPath,
         fetchUpdatedTonieCard,
@@ -253,8 +357,6 @@ export const TonieCard: React.FC<{
         setInputValidationSource,
         t,
         addNotification,
-        handleNoCloudClick,
-        handleLiveClick,
     });
 
     // ------------------------
@@ -267,6 +369,7 @@ export const TonieCard: React.FC<{
     };
 
     const handleFileSelected = (result: { path: string }) => {
+        sourceEditor.updateProfile("audio", { source: result.path });
         setSelectedSource(result.path);
         setTempSelectedSource(result.path);
         setSelectFileModalOpen(false);
@@ -283,10 +386,6 @@ export const TonieCard: React.FC<{
 
     const searchModelResultChanged = (_newValue: string) => {
         // Model search is now decoupled from the model value input.
-    };
-
-    const searchRadioResultChanged = (newValue: string) => {
-        setSelectedSource(newValue);
     };
 
     // ------------------------
@@ -631,30 +730,59 @@ export const TonieCard: React.FC<{
 
             {isEditModalOpen && (
                 <EditTonieModal
-                    podcast={{
-                        ...podcast,
-                        editor: (
-                            <PodcastSubscriptionEditor
-                                state={podcast}
-                                disabled={readOnly}
-                                onDetached={fetchUpdatedTonieCard}
-                            />
-                        ),
+                    sourceEditor={{
+                        kind: selectedKind,
+                        setKind: (kind: AudioSourceKind) => sourceEditor.setSelectedKind(kind),
+                        podcastSupported: podcast.supported,
+                        ardSupported:
+                            podcast.supported &&
+                            Boolean(podcast.capabilities.sourceTypes?.includes("ard_audiothek")),
+                        valid: Boolean(selectedSourceValid) && !sourceEditor.error,
+                        loading: !podcast.initialized || sourceEditor.loading,
+                        busy: podcast.busy || saveBusy,
+                        error:
+                            saveError ||
+                            sourceEditor.error ||
+                            (selectedKind === "podcast" || selectedKind === "ard"
+                                ? podcast.error
+                                : ""),
+                        editor:
+                            selectedKind === "radio" ? (
+                                <RadioSourceEditor
+                                    profile={sourceEditor.drafts.radio}
+                                    onChange={(profile) =>
+                                        sourceEditor.updateProfile("radio", profile)
+                                    }
+                                    searchKey={keyRadioStreamSearch}
+                                />
+                            ) : selectedKind === "podcast" || selectedKind === "ard" ? (
+                                <PodcastSubscriptionEditor
+                                    state={podcastEditorState}
+                                    kind={selectedKind}
+                                    disabled={readOnly}
+                                    onDetached={async () => {
+                                        await fetchUpdatedTonieCard();
+                                    }}
+                                />
+                            ) : null,
                     }}
                     open={isEditModalOpen}
                     title={editModalTitle}
-                    onCancel={() => setIsEditModalOpen(false)}
+                    onCancel={() => {
+                        if (saveBusy) return;
+                        sourceEditor.cancel();
+                        setIsEditModalOpen(false);
+                    }}
                     onSave={handleSaveChanges}
-                    selectedSource={selectedSource}
+                    selectedSource={sourceEditor.drafts.audio.source}
                     onSelectedSourceChange={(value) => {
+                        sourceEditor.updateProfile("audio", { source: value });
                         setSelectedSource(value);
                         setTempSelectedSource(value);
                     }}
-                    originalSource={tonieCard.source || ""}
+                    originalSource={sourceEditor.originalProfiles.audio.source}
                     inputValidationSource={inputValidationSource}
                     setInputValidationSource={setInputValidationSource}
-                    keyRadioStreamSearch={keyRadioStreamSearch}
-                    onSearchRadioChange={searchRadioResultChanged}
                     selectedModel={selectedModel}
                     onSelectedModelChange={(value) => {
                         setSelectedModel(value);

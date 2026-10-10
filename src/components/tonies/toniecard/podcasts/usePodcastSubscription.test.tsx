@@ -84,11 +84,17 @@ describe("podcast draft and polling", () => {
         await act(async () => {
             await vi.advanceTimersByTimeAsync(2000);
         });
+        expect(current.subscription?.revision).toBe(9);
+        expect(current.editingSubscription?.revision).toBe(1);
         await act(async () => current.setDraft({ ...current.draft, episodeCount: 2 }));
         await act(async () => current.save());
         expect(mocks.save.mock.calls[0][0]).toBe(base.ruid);
         expect(mocks.save.mock.calls[0][1]).toBe("box-1");
         expect(mocks.save.mock.calls[0][3].revision).toBe(1);
+        await act(async () => {
+            await current.reloadSubscription();
+        });
+        expect(current.editingSubscription?.revision).toBe(9);
     });
     it("keeps normal editing available with an older backend", async () => {
         mocks.capabilities.mockResolvedValue({ supported: false });

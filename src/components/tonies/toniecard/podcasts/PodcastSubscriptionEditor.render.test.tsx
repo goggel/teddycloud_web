@@ -49,12 +49,21 @@ const base = {
         },
     ],
 };
-function Harness({ open, disabled }: { open: boolean; disabled: boolean }) {
+function Harness({
+    open,
+    disabled,
+    kind,
+}: {
+    open: boolean;
+    disabled: boolean;
+    kind?: "podcast" | "ard";
+}) {
     current = usePodcastSubscription(open, base.ruid, "");
     return open ? (
         <>
             <PodcastSubscriptionEditor
                 state={current}
+                kind={kind}
                 disabled={disabled}
                 onDetached={async () => {}}
             />
@@ -68,8 +77,8 @@ function Harness({ open, disabled }: { open: boolean; disabled: boolean }) {
         </>
     ) : null;
 }
-async function render(open = true, disabled = false) {
-    await act(async () => root.render(<Harness open={open} disabled={disabled} />));
+async function render(open = true, disabled = false, kind?: "podcast" | "ard") {
+    await act(async () => root.render(<Harness open={open} disabled={disabled} kind={kind} />));
 }
 const button = (text: string) =>
     Array.from(host.querySelectorAll("button")).find((b) => b.textContent === text)!;
@@ -166,6 +175,8 @@ describe("rendered podcast editor", () => {
         expect(pending).toHaveLength(1);
         await click(video);
         expect(current.draft.feedUrl).toBe(videoUrl);
+        expect(current.draft.displayName).toBe("Video Maus");
+        expect(current.draft.displayNameSourceKey).toBe("rss:" + videoUrl);
         await click(button("podcasts.preview"));
         expect(host.textContent).toContain("Preview show");
         await input("podcasts.trimStart", "9");
@@ -173,6 +184,8 @@ describe("rendered podcast editor", () => {
         expect(pending).toHaveLength(2);
         await act(async () => pending.forEach((resolve) => resolve({ videoOnly: true })));
         expect(current.draft.feedUrl).toBe("");
+        expect(current.draft.displayName).toBe("");
+        expect(current.draft.displayNameSourceKey).toBe("");
         expect(current.draft.trimStartSeconds).toBe(9);
         expect(current.valid).toBe(false);
         expect(host.textContent).toContain("podcasts.videoRemoved");
@@ -336,7 +349,7 @@ describe("rendered podcast editor", () => {
         expect(button("podcasts.preview").disabled).toBe(true);
         expect(mocks.preview).not.toHaveBeenCalled();
     });
-    it("switches provider, cancels stale searches, and selects an ARD show in the real dropdown", async () => {
+    it("uses the selected ARD source, cancels stale searches, and keeps its selected show name", async () => {
         const ardUrl = "https://www.ardsounds.de/sendung/example/urn:ard:show:0e3f60ed4ba198df/";
         mocks.search.mockResolvedValue({
             results: [
@@ -351,12 +364,9 @@ describe("rendered podcast editor", () => {
             ],
         });
         await render();
-        const source = host.querySelector('[aria-label="podcasts.sourceType"]')!;
-        await act(async () => source.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
-        const ardOption = Array.from(document.querySelectorAll(".ant-select-item-option")).find(
-            (e) => e.textContent === "podcasts.ard",
-        )!;
-        await click(ardOption);
+        await act(async () => current.setDraft({ ...current.draft, sourceType: "ard_audiothek" }));
+        await render(true, false, "ard");
+        expect(host.querySelector('[aria-label="podcasts.sourceType"]')).toBeNull();
         expect(current.draft.sourceType).toBe("ard_audiothek");
         const search = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find(
             (e) => e.getAttribute("aria-label") === "podcasts.search",
@@ -377,7 +387,13 @@ describe("rendered podcast editor", () => {
         )!;
         await click(show);
         expect(current.draft.ardShowUrl).toBe(ardUrl);
+        expect(current.draft.displayName).toBe("ARD fixture");
+        expect(host.textContent).toContain("ARD fixture");
         expect(current.sourceKey).toBe("ard:urn:ard:show:0e3f60ed4ba198df");
+        await input("podcasts.ardShowUrl", "https://www.ardsounds.de/sendung/other/123/");
+        expect(current.draft.displayName).toBe("");
+        expect(current.draft.displayNameSourceKey).toBe("");
+        expect(host.textContent).not.toContain("ARD fixture");
         await render(false);
         expect(signal.aborted).toBe(true);
     });
