@@ -155,3 +155,51 @@ describe("podcast API", () => {
         expect(await api.podcastCapabilities()).toEqual({ supported: false });
     });
 });
+
+describe("source profile API", () => {
+    it("reads capabilities, fetches an overlay scope and sends one CAS profile", async () => {
+        const fetchApi = vi
+            .fn()
+            .mockResolvedValueOnce(
+                new Response('{"supported":true,"version":1,"maxRequestBytes":65536}'),
+            )
+            .mockResolvedValueOnce(new Response('{"revision":0,"profiles":{}}'))
+            .mockResolvedValueOnce(
+                new Response(
+                    '{"revision":1,"profiles":{"radio":{"source":"https://example.org/live"}}}',
+                ),
+            );
+        const api = new TeddyCloudApi(new Configuration({ basePath: "", fetchApi }));
+        const signal = new AbortController().signal;
+        expect((await api.sourceProfilesCapabilities(signal)).supported).toBe(true);
+        await api.sourceProfiles("0123456789abcdef", "box & one", signal);
+        expect(fetchApi.mock.calls[1][0]).toBe(
+            "/api/source-profiles?ruid=0123456789abcdef&overlay=box%20%26%20one",
+        );
+        expect(fetchApi.mock.calls[1][1].signal).toBe(signal);
+        const profile = { source: "https://example.org/live" };
+        await api.saveSourceProfile("0123456789abcdef", "box & one", "radio", 0, profile);
+        const [url, init] = fetchApi.mock.calls[2];
+        expect(url).toBe("/api/source-profiles/save?overlay=box%20%26%20one");
+        expect(JSON.parse(init.body)).toEqual({
+            ruid: "0123456789abcdef",
+            kind: "radio",
+            expectedRevision: 0,
+            profile,
+        });
+    });
+
+    it("retains a conflict error and treats a missing capability route as an older backend", async () => {
+        const fetchApi = vi
+            .fn()
+            .mockResolvedValueOnce(new Response(null, { status: 404 }))
+            .mockResolvedValueOnce(
+                new Response('{"error":{"message":"Source profiles changed"}}', { status: 409 }),
+            );
+        const api = new TeddyCloudApi(new Configuration({ basePath: "", fetchApi }));
+        expect(await api.sourceProfilesCapabilities()).toEqual({ supported: false });
+        await expect(
+            api.saveSourceProfile("0123456789abcdef", "", "audio", 0, { source: "x" }),
+        ).rejects.toThrow("Source profiles changed");
+    });
+});

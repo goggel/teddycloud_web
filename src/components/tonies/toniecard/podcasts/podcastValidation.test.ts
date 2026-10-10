@@ -11,6 +11,10 @@ describe("podcast settings", () => {
     it("accepts public RSS syntax and periodic updates off", () => {
         expect(validPodcastConfig(config)).toBe(true);
         expect(validPodcastConfig({ ...config, intervalHours: 0 })).toBe(true);
+        expect(defaultPodcastConfig().refreshOnPlacement).toBe(true);
+        expect(podcastConfig({ ...config, refreshOnPlacement: false }).refreshOnPlacement).toBe(
+            true,
+        );
     });
     it.each([0, 51, 1.5, NaN])("rejects episode count %s", (episodeCount) => {
         expect(validPodcastConfig({ ...config, episodeCount })).toBe(false);
@@ -90,11 +94,13 @@ describe("extended podcast settings", () => {
         const legacy = configForCapabilities(config, { supported: true });
         expect(legacy).not.toHaveProperty("episodeTrims");
         expect(legacy).not.toHaveProperty("sourceType");
+        expect(legacy).not.toHaveProperty("displayName");
         expect(
             configForCapabilities(config, {
                 supported: true,
                 sourceTypes: ["rss"],
                 trimSupported: true,
+                displayNameSupported: true,
             }),
         ).toEqual(config);
     });

@@ -12,6 +12,12 @@ import type {
     PodcastSearchResult,
     PodcastSubscription,
 } from "../../types/podcastTypes";
+import type {
+    AudioSourceKind,
+    AudioSourceProfiles,
+    SourceProfilesCapabilities,
+    SourceProfilesResponse,
+} from "../../types/audioSourceTypes";
 
 import * as runtime from "../runtime";
 import type { Errors, OptionsList, StatsList } from "../models";
@@ -39,6 +45,64 @@ export interface ApiUploadCertPostRequest {
  *
  */
 export class TeddyCloudApi extends runtime.BaseAPI {
+    private async sourceProfilesRequest<T>(
+        action: string,
+        options: { overlay?: string; ruid?: string; body?: unknown; signal?: AbortSignal } = {},
+    ): Promise<T> {
+        try {
+            const response = await this.request(
+                {
+                    path: `/api/source-profiles${action ? `/${action}` : ""}`,
+                    method: options.body === undefined ? "GET" : "POST",
+                    headers:
+                        options.body === undefined ? {} : { "Content-Type": "application/json" },
+                    query: {
+                        ...(options.ruid ? { ruid: options.ruid } : {}),
+                        ...(options.overlay ? { overlay: options.overlay } : {}),
+                    },
+                    body: options.body,
+                },
+                { signal: options.signal },
+            );
+            return response.json() as Promise<T>;
+        } catch (error) {
+            if (error instanceof runtime.ResponseError) {
+                const payload = await error.response
+                    .clone()
+                    .json()
+                    .catch(() => undefined);
+                if (typeof payload?.error?.message === "string")
+                    error.message = payload.error.message;
+            }
+            throw error;
+        }
+    }
+    async sourceProfilesCapabilities(signal?: AbortSignal): Promise<SourceProfilesCapabilities> {
+        try {
+            return await this.sourceProfilesRequest("capabilities", { signal });
+        } catch (error) {
+            if (error instanceof runtime.ResponseError && error.response.status === 404)
+                return { supported: false };
+            throw error;
+        }
+    }
+    sourceProfiles(ruid: string, overlay: string, signal?: AbortSignal) {
+        return this.sourceProfilesRequest<SourceProfilesResponse>("", { ruid, overlay, signal });
+    }
+    saveSourceProfile<K extends AudioSourceKind>(
+        ruid: string,
+        overlay: string,
+        kind: K,
+        expectedRevision: number,
+        profile: Partial<AudioSourceProfiles[K]>,
+        signal?: AbortSignal,
+    ) {
+        return this.sourceProfilesRequest<SourceProfilesResponse>("save", {
+            overlay,
+            body: { ruid, kind, expectedRevision, profile },
+            signal,
+        });
+    }
     async podcastRequest<T>(
         action: string,
         options: {

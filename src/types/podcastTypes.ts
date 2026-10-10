@@ -5,6 +5,8 @@ export interface PodcastEpisodeTrim {
     trimEndSeconds: number;
 }
 export interface PodcastConfig {
+    displayName?: string;
+    displayNameSourceKey?: string;
     sourceType?: PodcastSourceType;
     feedUrl: string;
     ardShowUrl?: string;
@@ -50,6 +52,7 @@ export interface PodcastPreview {
     warnings: string[];
 }
 export interface PodcastSubscription extends PodcastConfig {
+    ownsAssignment?: boolean;
     sourceKey?: string;
     ardShowId?: string;
     id: string;
@@ -77,6 +80,8 @@ export type PodcastSearchResult = PodcastSearchCommon &
     );
 export interface PodcastCapabilities {
     supported: boolean;
+    displayNameSupported?: boolean;
+    placementRefreshAlways?: boolean;
     message?: string;
     maxEpisodes?: number;
     sourceTypes?: PodcastSourceType[];

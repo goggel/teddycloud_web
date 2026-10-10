@@ -342,15 +342,14 @@ export const PodcastSubscriptionEditor = ({
                 />
                 <span>{t("podcasts.enabled")}</span>
             </Space>
-            <Space>
-                <Switch
-                    checked={draft.refreshOnPlacement}
-                    disabled={locked}
-                    onChange={(refreshOnPlacement) => setDraft({ ...draft, refreshOnPlacement })}
-                />
-                <span>{t("podcasts.placement")}</span>
-            </Space>
-            {draft.refreshOnPlacement && <Alert type="info" title={t("podcasts.placementHelp")} />}
+            <Alert
+                type="info"
+                title={
+                    state.capabilities.placementRefreshAlways
+                        ? t("podcasts.placementHelp")
+                        : t("podcasts.placementLegacyHelp")
+                }
+            />
             <Space wrap>
                 <Button
                     disabled={

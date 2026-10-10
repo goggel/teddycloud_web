@@ -5,6 +5,8 @@ import {
     PodcastEpisode,
 } from "../../../../types/podcastTypes";
 export const defaultPodcastConfig = (): PodcastDraft => ({
+    displayName: "",
+    displayNameSourceKey: "",
     sourceType: "rss",
     feedUrl: "",
     ardShowUrl: "",
@@ -15,10 +17,12 @@ export const defaultPodcastConfig = (): PodcastDraft => ({
     episodeCount: 5,
     order: "newest_first",
     intervalHours: 6,
-    refreshOnPlacement: false,
+    refreshOnPlacement: true,
     enabled: true,
 });
 export const podcastConfig = (value: PodcastConfig): PodcastDraft => ({
+    displayName: value.displayName ?? "",
+    displayNameSourceKey: value.displayNameSourceKey ?? "",
     sourceType: value.sourceType ?? "rss",
     feedUrl: value.feedUrl,
     ardShowUrl: value.ardShowUrl ?? "",
@@ -31,7 +35,7 @@ export const podcastConfig = (value: PodcastConfig): PodcastDraft => ({
     episodeCount: value.episodeCount,
     order: value.order,
     intervalHours: value.intervalHours,
-    refreshOnPlacement: value.refreshOnPlacement,
+    refreshOnPlacement: true,
     enabled: value.enabled,
 });
 export const configForCapabilities = (
@@ -48,6 +52,10 @@ export const configForCapabilities = (
         delete config.trimEndSeconds;
         delete config.episodeTrimSourceKey;
         delete config.episodeTrims;
+    }
+    if (!capabilities.displayNameSupported) {
+        delete config.displayName;
+        delete config.displayNameSourceKey;
     }
     return config;
 };
