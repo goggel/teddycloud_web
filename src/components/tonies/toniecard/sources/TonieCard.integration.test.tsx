@@ -85,6 +85,8 @@ vi.mock("../hooks/useAssignSiblingEpisode", () => ({
     }),
 }));
 vi.mock("../../common/searches/ToniesJsonSearch", () => ({ ToniesJsonSearch: () => null }));
+// Provider discovery is unrelated to assignment/editor wiring and must stay offline.
+vi.mock("../search/RadioStreamSearch", () => ({ RadioStreamSearch: () => null }));
 vi.mock("../../common/modals/SelectAudioModal", () => ({
     SelectAudioModal: () => {
         mocks.file();
