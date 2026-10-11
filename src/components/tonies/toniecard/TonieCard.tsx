@@ -97,12 +97,17 @@ export const TonieCard: React.FC<{
     const [isInformationModalOpen, setInformationModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const podcast = usePodcastSubscription(isEditModalOpen, tonieCard.ruid, overlay);
+    const [detachReadbackBusy, setDetachReadbackBusy] = useState(false);
     const [profilesSupported, setProfilesSupported] = useState(false);
     const sourceEditor = useAudioSourceEditor(
         isEditModalOpen && podcast.initialized,
         tonieCard.ruid,
         overlay,
-        { source: tonieCard.source || "", subscription: podcast.subscription },
+        {
+            source: tonieCard.source || "",
+            sourceKind: tonieCard.sourceKind,
+            subscription: podcast.subscription,
+        },
         async (signal) => {
             const capabilities = await api.sourceProfilesCapabilities(signal);
             setProfilesSupported(capabilities.supported);
@@ -264,6 +269,16 @@ export const TonieCard: React.FC<{
     };
     const podcastEditorState = {
         ...podcast,
+        busy: podcast.busy || detachReadbackBusy,
+        detach: async () => {
+            setDetachReadbackBusy(true);
+            try {
+                await podcast.detach();
+            } catch (cause) {
+                setDetachReadbackBusy(false);
+                throw cause;
+            }
+        },
         draft: selectedPodcastDraft,
         setDraft: setSelectedPodcastDraft,
         sourceKey: selectedPodcastSourceKey,
@@ -739,10 +754,12 @@ export const TonieCard: React.FC<{
                             Boolean(podcast.capabilities.sourceTypes?.includes("ard_audiothek")),
                         valid: Boolean(selectedSourceValid) && !sourceEditor.error,
                         loading: !podcast.initialized || sourceEditor.loading,
-                        busy: podcast.busy || saveBusy,
+                        busy: podcast.busy || saveBusy || detachReadbackBusy,
                         error:
                             saveError ||
-                            sourceEditor.error ||
+                            (sourceEditor.error === "sources.readbackFailed"
+                                ? t(sourceEditor.error)
+                                : sourceEditor.error) ||
                             (selectedKind === "podcast" || selectedKind === "ard"
                                 ? podcast.error
                                 : ""),
@@ -761,7 +778,25 @@ export const TonieCard: React.FC<{
                                     kind={selectedKind}
                                     disabled={readOnly}
                                     onDetached={async () => {
-                                        await fetchUpdatedTonieCard();
+                                        try {
+                                            const card = await fetchUpdatedTonieCard();
+                                            if (!card)
+                                                throw new Error(
+                                                    "Cannot read assignment after detach",
+                                                );
+                                            const profiles = profilesSupported
+                                                ? await api.sourceProfiles(tonieCard.ruid, overlay)
+                                                : { revision: 0, profiles: {} };
+                                            sourceEditor.reconcile(profiles, {
+                                                source: card.source || "",
+                                                sourceKind: card.sourceKind,
+                                            });
+                                        } catch (cause) {
+                                            sourceEditor.reportReadbackFailure();
+                                            throw cause;
+                                        } finally {
+                                            setDetachReadbackBusy(false);
+                                        }
                                     }}
                                 />
                             ) : null,

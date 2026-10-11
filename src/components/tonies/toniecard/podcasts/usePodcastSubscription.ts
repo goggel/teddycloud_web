@@ -142,7 +142,7 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
                 baseline.current = podcastConfig(result.subscription);
             } else if (subscription) {
                 await api.podcastDetach(editingBase.current || subscription, overlay);
-                if (active.current && epoch.current === session) setSubscription(undefined);
+                if (active.current && epoch.current === session) recordSubscription(undefined);
             }
         });
     const refresh = () =>
@@ -154,7 +154,7 @@ export const usePodcastSubscription = (open: boolean, ruid: string, overlay: str
             const session = epoch.current;
             if (subscription) await api.podcastDetach(editingBase.current || subscription, overlay);
             if (active.current && epoch.current === session) {
-                setSubscription(undefined);
+                recordSubscription(undefined);
                 setMode("audio");
                 setDraft(defaultPodcastConfig());
                 baseline.current = defaultPodcastConfig();

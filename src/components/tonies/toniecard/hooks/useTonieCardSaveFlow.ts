@@ -91,7 +91,8 @@ export const useTonieCardSaveFlow = ({
     };
 
     const handleSaveChanges = async () => {
-        if (saving.current || sourceEditor.loading || !podcast.initialized) return;
+        if (saving.current || sourceEditor.loading || sourceEditor.error || !podcast.initialized)
+            return;
         saving.current = true;
         setBusy(true);
         setError("");
@@ -156,10 +157,10 @@ export const useTonieCardSaveFlow = ({
                     detachPodcast: async (subscription) => {
                         await api.podcastDetach(subscription, overlay);
                     },
-                    assignDirectSource: async (source, live) => {
+                    assignDirectSource: async (source, live, kind) => {
                         await api.apiPostTeddyCloudContentJson(
                             tonieCard.ruid,
-                            `source=${encodeURIComponent(source)}&nocloud=true&live=${live}`,
+                            `source=${encodeURIComponent(source)}&sourceKind=${kind}&nocloud=true&live=${live}`,
                             overlay,
                         );
                         setInputValidationSource({ validateStatus: "", help: "" });
@@ -211,6 +212,7 @@ export const useTonieCardSaveFlow = ({
             ) {
                 const assignment = {
                     source: cardResult.value.source || "",
+                    sourceKind: cardResult.value.sourceKind,
                     subscription: subscriptionResult.value,
                 };
                 if (

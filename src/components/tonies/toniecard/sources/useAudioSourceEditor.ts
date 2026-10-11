@@ -132,6 +132,7 @@ export const useAudioSourceEditor = (
         baselineKind.current = loaded.kind;
         setRevision(loaded.revision);
         setMissingKinds(missingFrom(response));
+        setError("");
     };
     const recordSaved = (kind: AudioSourceKind, response: SourceProfilesResponse) => {
         // The assignment captured on open can still point at the previous source.
@@ -156,6 +157,7 @@ export const useAudioSourceEditor = (
         revision,
         loading,
         error,
+        reportReadbackFailure: () => setError("sources.readbackFailed"),
         dirtyKinds,
         missingKinds,
         selectionChanged: selectedKind !== baselineKind.current,

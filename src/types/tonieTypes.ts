@@ -19,6 +19,7 @@ export type TonieCardProps = {
     nocloud: boolean;
     hasCloudAuth: boolean;
     source: string;
+    sourceKind?: "audio" | "radio";
     audioUrl: string;
     downloadTriggerUrl: string;
     tonieInfo: TonieInfo;

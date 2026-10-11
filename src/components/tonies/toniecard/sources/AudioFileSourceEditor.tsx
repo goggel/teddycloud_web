@@ -23,6 +23,7 @@ export interface AudioFileSourceEditorProps {
     modelAudioHasMapping?: boolean;
     selectedModel: string;
     audioInfoTooltip?: React.ReactNode;
+    disabled?: boolean;
 }
 
 export const AudioFileSourceEditor = ({
@@ -36,6 +37,7 @@ export const AudioFileSourceEditor = ({
     modelAudioHasMapping,
     selectedModel,
     audioInfoTooltip,
+    disabled = false,
 }: AudioFileSourceEditorProps) => {
     const { t } = useTranslation();
     const { token } = theme.useToken();
@@ -77,12 +79,12 @@ export const AudioFileSourceEditor = ({
             {direction === "next" ? (
                 <StepForwardOutlined
                     style={available ? undefined : { color: token.colorTextDisabled }}
-                    onClick={available ? action : undefined}
+                    onClick={!disabled && available ? action : undefined}
                 />
             ) : (
                 <StepBackwardOutlined
                     style={available ? undefined : { color: token.colorTextDisabled }}
-                    onClick={available ? action : undefined}
+                    onClick={!disabled && available ? action : undefined}
                 />
             )}
         </Tooltip>
@@ -92,12 +94,16 @@ export const AudioFileSourceEditor = ({
             <Input
                 aria-label={t("sources.audio")}
                 value={source}
-                onChange={(event) => onChange(event.target.value)}
+                disabled={disabled}
+                onChange={(event) => {
+                    if (!disabled) onChange(event.target.value);
+                }}
                 prefix={
                     <>
                         <CloseOutlined
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => {
+                                if (disabled) return;
                                 onChange("");
                                 clearValidation();
                             }}
@@ -106,7 +112,7 @@ export const AudioFileSourceEditor = ({
                         <RollbackOutlined
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={
-                                changed
+                                !disabled && changed
                                     ? () => {
                                           onChange(originalSource);
                                           clearValidation();
@@ -149,7 +155,7 @@ export const AudioFileSourceEditor = ({
                         )}
                         <FolderOpenOutlined
                             onMouseDown={(event) => event.preventDefault()}
-                            onClick={onOpenFileSelectModal}
+                            onClick={disabled ? undefined : onOpenFileSelectModal}
                         />
                     </>
                 }
@@ -158,7 +164,7 @@ export const AudioFileSourceEditor = ({
                 <Form.Item style={{ marginTop: 8, marginBottom: 0 }}>
                     <Button
                         icon={<SwapOutlined />}
-                        disabled={!modelAudioPath}
+                        disabled={disabled || !modelAudioPath}
                         onClick={() => {
                             if (modelAudioPath) {
                                 onChange(modelAudioPath);

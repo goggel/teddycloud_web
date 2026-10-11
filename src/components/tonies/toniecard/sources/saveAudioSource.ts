@@ -32,7 +32,7 @@ export interface SourceSaveOperations {
         subscription?: PodcastSubscription,
     ) => Promise<PodcastSubscription>;
     detachPodcast: (subscription: PodcastSubscription) => Promise<void>;
-    assignDirectSource: (source: string, live: boolean) => Promise<void>;
+    assignDirectSource: (source: string, live: boolean, kind: "audio" | "radio") => Promise<void>;
     recordProfile: (kind: AudioSourceKind, response: SourceProfilesResponse) => void;
     recordSubscription: (subscription?: PodcastSubscription) => void;
     recordActivation: (kind: AudioSourceKind) => void;
@@ -172,7 +172,7 @@ export const saveAudioSource = async (
     }
     if (mustAssign) {
         try {
-            await operations.assignDirectSource(direct, directSourceLive(target, direct));
+            await operations.assignDirectSource(direct, directSourceLive(target, direct), target);
         } catch (cause) {
             throw new SourceSaveError("source", savedProfiles, detached, cause);
         }

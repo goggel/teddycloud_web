@@ -68,6 +68,19 @@ describe("source profile detection", () => {
         );
     });
 
+    it("uses explicit kind before ambiguous profiles and keeps podcast ownership first", () => {
+        const source = "https://example.org/shared.mp3";
+        const profiles = { audio: { source }, radio: { source } };
+        expect(activeSourceKind({ source, sourceKind: "radio" }, profiles)).toBe("radio");
+        expect(activeSourceKind({ source, sourceKind: "audio" }, profiles)).toBe("audio");
+        expect(
+            activeSourceKind(
+                { source, sourceKind: "radio", subscription: subscription("rss", true) },
+                profiles,
+            ),
+        ).toBe("podcast");
+    });
+
     it("uses the actual audio assignment after another client replaces it", () => {
         const profiles = completeSourceProfiles(
             { source: "lib://replacement.taf" },

@@ -9,6 +9,7 @@ import { defaultPodcastConfig, podcastConfig } from "../podcasts/podcastValidati
 
 export interface SourceAssignment {
     source: string;
+    sourceKind?: "audio" | "radio";
     subscription?: PodcastSubscription;
 }
 
@@ -34,6 +35,8 @@ export const activeSourceKind = (
     if (ownsSourceAssignment(assignment)) {
         return assignment.subscription?.sourceType === "ard_audiothek" ? "ard" : "podcast";
     }
+    if (assignment.sourceKind === "audio" || assignment.sourceKind === "radio")
+        return assignment.sourceKind;
     // Legacy HTTP audio, TAPs, and live flags alone do not identify a radio.
     if (
         assignment.source &&
