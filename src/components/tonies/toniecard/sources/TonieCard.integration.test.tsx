@@ -165,6 +165,7 @@ const detach = async () => {
     await click(document.querySelector(".ant-popconfirm-buttons .ant-btn-primary"));
 };
 beforeEach(async () => {
+    vi.useFakeTimers();
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     window.matchMedia = vi.fn().mockImplementation(() => ({
         matches: false,
@@ -232,6 +233,9 @@ beforeEach(async () => {
 });
 afterEach(async () => {
     await act(async () => root.unmount());
+    // AntD delay-state callbacks must drain before jsdom is torn down.
+    await act(async () => vi.runAllTimersAsync());
+    vi.useRealTimers();
     host.remove();
 });
 const render = async () => {
