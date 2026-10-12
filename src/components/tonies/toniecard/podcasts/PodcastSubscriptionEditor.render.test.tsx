@@ -147,6 +147,7 @@ afterEach(async () => {
     await act(async () => root.unmount());
     host.remove();
     vi.useRealTimers();
+    vi.restoreAllMocks();
 });
 describe("rendered podcast editor", () => {
     it("shows search results immediately and clears a selected video feed when its background check completes", async () => {
@@ -396,5 +397,119 @@ describe("rendered podcast editor", () => {
         expect(host.textContent).not.toContain("ARD fixture");
         await render(false);
         expect(signal.aborted).toBe(true);
+    });
+    it("compares newest episodes independently and saves only captured draft cuts", async () => {
+        const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+        vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+        mocks.preview.mockImplementation(async (config) => ({
+            sourceKey: "rss:" + url,
+            title: "Recent show",
+            warnings: [],
+            episodes:
+                config.episodeCount === 5
+                    ? [
+                          {
+                              identity: "recent-a",
+                              title: "Recent A",
+                              url: url + "/a.mp3",
+                              publishedAt: 10,
+                              durationSeconds: 999,
+                          },
+                          {
+                              identity: "recent-b",
+                              title: "Recent B",
+                              url: url + "/b.mp3",
+                              publishedAt: 9,
+                          },
+                      ]
+                    : [
+                          {
+                              identity: "selected",
+                              title: "Selected only",
+                              url: url + "/selected.mp3",
+                              publishedAt: 8,
+                          },
+                      ],
+        }));
+        await render();
+        await act(async () =>
+            current.setDraft({ ...current.draft, episodeCount: 1, order: "oldest_first" }),
+        );
+        await click(button("podcasts.preview"));
+        expect(host.textContent).toContain("Selected only");
+        expect(host.querySelector("audio")).toBeNull();
+        await click(button("podcasts.listenLoad"));
+        expect(mocks.preview.mock.calls[1][0]).toMatchObject({
+            episodeCount: 5,
+            order: "newest_first",
+            trimStartSeconds: 0,
+            trimEndSeconds: 0,
+            episodeTrims: [],
+        });
+        expect(current.draft.episodeCount).toBe(1);
+        expect(current.draft.order).toBe("oldest_first");
+        expect(host.textContent).toContain("Selected only");
+        expect(host.textContent).toContain("Recent A");
+        expect(host.querySelector("audio")).toBeNull();
+        await click(button("podcasts.listenEpisode"));
+        const audio = host.querySelector("audio")!;
+        expect(audio.getAttribute("src")).toBe(url + "/a.mp3");
+        Object.defineProperty(audio, "duration", { configurable: true, value: 100 });
+        await act(async () => audio.dispatchEvent(new Event("loadedmetadata")));
+        await act(async () => {
+            audio.currentTime = 10.4;
+            audio.dispatchEvent(new Event("timeupdate"));
+        });
+        await click(button("podcasts.listenSetIntro"));
+        expect(current.draft.trimStartSeconds).toBe(10);
+        expect(current.draft.trimEndSeconds).toBe(0);
+        expect(mocks.save).not.toHaveBeenCalled();
+        const episodeTarget = host.querySelector<HTMLInputElement>('input[value="episode"]')!;
+        await click(episodeTarget);
+        await act(async () => {
+            audio.currentTime = 99.6;
+            audio.dispatchEvent(new Event("timeupdate"));
+        });
+        await click(button("podcasts.listenSetOutro"));
+        expect(current.draft.episodeTrims).toEqual([
+            { identity: "recent-a", trimStartSeconds: 10, trimEndSeconds: 0 },
+        ]);
+        expect(current.draft.episodeTrimSourceKey).toBe("rss:" + url);
+        await click(button("podcasts.listenUseDefaults"));
+        expect(current.draft.episodeTrims).toEqual([]);
+        await click(button("Save"));
+        expect(mocks.save.mock.calls[0][2]).toMatchObject({
+            episodeCount: 1,
+            order: "oldest_first",
+            trimStartSeconds: 10,
+            trimEndSeconds: 0,
+            episodeTrims: [],
+        });
+        await render(false);
+        expect(pause).toHaveBeenCalledWith();
+        expect(audio.hasAttribute("src")).toBe(false);
+    });
+    it("discards recent-player captures and unloads audio on Cancel and reopen", async () => {
+        vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+        const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+        await render();
+        await click(button("podcasts.listenLoad"));
+        await click(button("podcasts.listenEpisode"));
+        const audio = host.querySelector("audio")!;
+        Object.defineProperty(audio, "duration", { configurable: true, value: 100 });
+        await act(async () => audio.dispatchEvent(new Event("loadedmetadata")));
+        await act(async () => {
+            audio.currentTime = 7;
+            audio.dispatchEvent(new Event("timeupdate"));
+        });
+        await click(button("podcasts.listenSetIntro"));
+        expect(current.draft.trimStartSeconds).toBe(7);
+        await render(false);
+        expect(audio.hasAttribute("src")).toBe(false);
+        expect(load).toHaveBeenCalledWith();
+        await render();
+        expect(current.draft.trimStartSeconds).toBe(0);
+        expect(host.querySelector("audio")).toBeNull();
+        expect(mocks.save).not.toHaveBeenCalled();
     });
 });

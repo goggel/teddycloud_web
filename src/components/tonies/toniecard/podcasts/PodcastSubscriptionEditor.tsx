@@ -19,6 +19,7 @@ import { defaultAPIConfig } from "../../../../config/defaultApiConfig";
 import { PodcastPreview, PodcastSearchResult } from "../../../../types/podcastTypes";
 import { usePodcastSubscription } from "./usePodcastSubscription";
 import { usePodcastFeedFilter } from "./usePodcastFeedFilter";
+import { PodcastRecentEpisodes } from "./PodcastRecentEpisodes";
 import {
     configForCapabilities,
     rssSourceKey,
@@ -439,6 +440,7 @@ export const PodcastSubscriptionEditor = ({
                     </Popconfirm>
                 )}
             </Space>
+            <PodcastRecentEpisodes api={api} state={state} locked={locked} />
             {(state.error || previewError) && (
                 <Alert type="error" title={state.error || previewError} />
             )}
